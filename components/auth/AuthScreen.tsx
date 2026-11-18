@@ -1,13 +1,15 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { CourseInput } from "@/components/ui/CourseInput";
 import { isFordhamEmail, useStudent } from "@/lib/auth";
 import { BRAND_ASSETS, CAMPUS_LABEL, REGIONS } from "@/lib/constants";
-import { makeId } from "@/lib/storage";
 import { toast } from "@/lib/toast";
 import type { Campus, Region, Student } from "@/lib/types";
+import { signInWithGoogle } from "@/lib/firebaseAuth";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDocFromServer, setDoc } from "firebase/firestore";
 
 interface Draft {
   email: string;
@@ -31,20 +33,6 @@ const EMPTY_DRAFT: Draft = {
   shareProfile: false,
 };
 
-const DEMO_STUDENT: Omit<Student, "id"> = {
-  name: "Jordan Rivera",
-  email: "jrivera42@fordham.edu",
-  campus: "rose-hill",
-  homeRegion: "Long Island",
-  homeArea: "Hicksville",
-  arrivalTime: "09:30",
-  courses: ["CISC 2000", "ECON 1100", "THEO 1000", "PHIL 1000"],
-  shareProfile: true,
-  commuteMode: "lirr",
-  commuteDays: ["Mon", "Tue", "Wed", "Thu"],
-  year: "Sophomore",
-  major: "Computer Science",
-};
 
 const STEPS = ["Sign in", "Your commute", "Classes and privacy"] as const;
 
@@ -69,6 +57,58 @@ export function AuthScreen() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
 
+  const [signingIn, setSigningIn] = useState(false);
+
+const handleGoogleLogin = async () => {
+  setError(null);
+  setSigningIn(true);
+
+  try {
+    const user = await signInWithGoogle();
+
+    const profile = await getDocFromServer(
+      doc(db, "students", user.uid)
+    );
+
+    if (profile.exists()) {
+      const student = profile.data() as Student;
+
+      if (
+        student.id !== user.uid ||
+        student.email !== user.email
+      ) {
+        throw new Error("Your saved profile does not match your account.");
+      }
+
+      saveStudent(student);
+
+      toast({
+        title: "Welcome back",
+        message: "Your saved profile is loaded.",
+        tone: "success",
+      });
+
+      return;
+    }
+
+    setDraft((previous) => ({
+      ...previous,
+      email: user.email ?? "",
+      name: user.displayName ?? "",
+    }));
+
+    setStep(1);
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Could not sign in and load your profile. Please try again."
+    );
+  } finally {
+    setSigningIn(false);
+  }
+};
+
   const patch = (changes: Partial<Draft>) => {
     setDraft((prev) => ({ ...prev, ...changes }));
     setError(null);
@@ -86,21 +126,54 @@ export function AuthScreen() {
     return null;
   };
 
-  const finish = () => {
-    const student: Student = {
-      id: makeId("stu"),
-      name: draft.name.trim(),
-      email: draft.email.trim().toLowerCase(),
-      campus: draft.campus,
-      homeRegion: draft.homeRegion,
-      homeArea: draft.homeArea.trim(),
-      arrivalTime: draft.arrivalTime,
-      courses: draft.courses,
-      shareProfile: draft.shareProfile,
-    };
-    saveStudent(student);
-    toast({ title: `Welcome to Ram Hub, ${student.name.split(" ")[0]}`, message: "Your commute is set up.", tone: "success" });
+  const finish = async () => {
+  setError(null);
+
+  const user = auth.currentUser;
+
+  if (
+    !user?.email ||
+    !user.emailVerified ||
+    !isFordhamEmail(user.email)
+  ) {
+    setError("Please sign in with your Fordham Google account.");
+    return;
+  }
+
+  const student: Student = {
+    id: user.uid,
+    name: draft.name.trim() || user.displayName || "Fordham student",
+    email: user.email,
+    campus: draft.campus,
+    homeRegion: draft.homeRegion,
+    homeArea: draft.homeArea.trim(),
+    arrivalTime: draft.arrivalTime,
+    courses: draft.courses,
+    shareProfile: draft.shareProfile,
   };
+
+  try {
+    await setDoc(
+      doc(db, "students", user.uid),
+      student,
+      { merge: true }
+    );
+
+    saveStudent(student);
+
+    toast({
+      title: "Profile saved",
+      message: "Your commute profile is saved in Firebase.",
+      tone: "success",
+    });
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Could not save your profile. Please try again."
+    );
+  }
+};
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -113,10 +186,7 @@ export function AuthScreen() {
     else finish();
   };
 
-  const useDemoProfile = () => {
-    saveStudent({ ...DEMO_STUDENT, id: makeId("stu") });
-    toast({ title: "Signed in with the demo profile", message: "Jordan Rivera, Rose Hill commuter.", tone: "success" });
-  };
+
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
@@ -165,6 +235,16 @@ export function AuthScreen() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={BRAND_ASSETS.ramMascot} alt="Fordham Ram" width={56} height={56} className="h-14 w-14" />
           </div>
+          {step === 0 && (
+  <button
+    type="button"
+    onClick={handleGoogleLogin}
+    disabled={signingIn}
+    className="btn-primary mt-5 w-full"
+  >
+    {signingIn ? "Signing in..." : "Continue with Google"}
+  </button>
+)}
 
           <form key={step} onSubmit={onSubmit} noValidate className="mt-5 animate-rise space-y-5">
             {step === 0 ? (
@@ -312,11 +392,6 @@ export function AuthScreen() {
             </div>
           </form>
 
-          {step === 0 ? (
-            <button type="button" onClick={useDemoProfile} className="btn-ghost mt-3 w-full">
-              <Sparkles className="h-4 w-4" /> Skip with a demo profile
-            </button>
-          ) : null}
 
           <p className="mt-8 border-t border-line pt-4 text-xs leading-relaxed text-ink-500">
             Ram Hub is a student project and is not affiliated with Fordham University operations. Live van positions
