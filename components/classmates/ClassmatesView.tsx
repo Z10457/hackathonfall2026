@@ -2,10 +2,12 @@
 
 import { EyeOff, Eye, ShieldOff } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useStudent } from "@/lib/auth";
+import { auth } from "@/lib/firebase";
+import { isLocalOnlyStudent, loadClassmateCards, publishClassmateCard } from "@/lib/firebaseAuth";
 import { initialsOf } from "@/lib/constants";
 import { matchClassmates } from "@/lib/matching";
 import { MOCK_STUDENTS } from "@/lib/mockData";
@@ -43,9 +45,46 @@ export function ClassmatesView() {
   const [reporting, setReporting] = useState<ClassmateMatch | null>(null);
   const [showBlocked, setShowBlocked] = useState(false);
 
+  const realAccount = student ? !isLocalOnlyStudent(student) : false;
+  const [realPeople, setRealPeople] = useState<Student[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  // Real accounts match against other real students in Firestore; the demo profile uses sample students.
+  useEffect(() => {
+    if (!student || !realAccount) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Make sure this student is discoverable too (covers accounts created before cards existed).
+        if (auth.currentUser?.uid === student.id) await publishClassmateCard(student);
+        const cards = await loadClassmateCards();
+        if (!cancelled) {
+          setRealPeople(cards);
+          setLoadError(false);
+        }
+      } catch (err) {
+        console.warn("Could not load classmates", err);
+        if (!cancelled) {
+          setRealPeople([]);
+          setLoadError(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [student, realAccount]);
+
+  const candidates = useMemo(() => (realAccount ? (realPeople ?? []) : MOCK_STUDENTS), [realAccount, realPeople]);
   const matches = useMemo(
-    () => (student ? matchClassmates(student, MOCK_STUDENTS, { blockedIds: blocked }) : []),
-    [student, blocked],
+    () =>
+      student
+        ? matchClassmates(student, candidates, { blockedIds: blocked }).map((m) =>
+            // Real cards already hold the privacy-safe name (initials unless opted in).
+            realAccount ? { ...m, displayName: m.student.name } : m,
+          )
+        : [],
+    [student, candidates, blocked, realAccount],
   );
   const shown = useMemo(
     () =>
@@ -54,7 +93,7 @@ export function ClassmatesView() {
       ),
     [matches, course, strongOnly],
   );
-  const blockedPeople = useMemo(() => MOCK_STUDENTS.filter((s) => blocked.includes(s.id)), [blocked]);
+  const blockedPeople = useMemo(() => candidates.filter((s) => blocked.includes(s.id)), [candidates, blocked]);
 
   if (!student) return null;
   const hasCourses = student.courses.length > 0;
@@ -125,7 +164,15 @@ export function ClassmatesView() {
           {shown.length === 0 ? (
             <EmptyState
               title="No classmates to show"
-              message={matches.length === 0 ? "No matches yet. Check back as more students join Ram Hub." : "Try a different class or turn off the strong match filter."}
+              message={
+                matches.length === 0
+                  ? loadError
+                    ? "Could not load classmates right now. Check your connection and try again."
+                    : realAccount && realPeople === null
+                      ? "Finding classmates..."
+                      : "No matches yet. Share Ram Hub with your classmates so you can find each other."
+                  : "Try a different class or turn off the strong match filter."
+              }
               action={
                 course || strongOnly ? (
                   <button type="button" className="btn-secondary" onClick={() => { setCourse(null); setStrongOnly(false); }}>Clear filters</button>

@@ -6,7 +6,8 @@ import {
   updateProfile,
   type User,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, query, setDoc } from "firebase/firestore";
+import { initialsOf } from "./constants";
 import { auth, db } from "./firebase";
 import type { Student } from "./types";
 
@@ -39,6 +40,36 @@ export async function loadProfile(uid: string): Promise<Student | null> {
 
 export async function saveProfile(student: Student): Promise<void> {
   await setDoc(doc(db, "students", student.id), student, { merge: true });
+  await publishClassmateCard(student);
+}
+
+/**
+ * The public, privacy-safe version of a profile that other signed-in students can read for
+ * classmate matching. Name and town are only included when the student opted in.
+ */
+export function classmateCardOf(student: Student): Student {
+  return {
+    id: student.id,
+    name: student.shareProfile ? student.name : initialsOf(student.name),
+    campus: student.campus,
+    homeRegion: student.homeRegion,
+    homeArea: student.shareProfile ? student.homeArea : "",
+    arrivalTime: student.arrivalTime,
+    courses: student.courses,
+    shareProfile: student.shareProfile,
+  };
+}
+
+export async function publishClassmateCard(student: Student): Promise<void> {
+  await setDoc(doc(db, "classmates", student.id), classmateCardOf(student));
+}
+
+const MAX_CLASSMATES = 500;
+
+/** Every published classmate card (other real Ram Hub students). */
+export async function loadClassmateCards(): Promise<Student[]> {
+  const snapshot = await getDocs(query(collection(db, "classmates"), limit(MAX_CLASSMATES)));
+  return snapshot.docs.map((d) => ({ ...(d.data() as Student), id: d.id }));
 }
 
 /** Demo and pre-Firebase profiles live only in this browser and are never synced. */
