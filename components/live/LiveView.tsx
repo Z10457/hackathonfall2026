@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useStudent } from "@/lib/auth";
+import { isLocalOnlyStudent } from "@/lib/firebaseAuth";
 import { useVanSimulation } from "@/lib/vanSimulation";
 import { ArrivalList, type DirectionFilter } from "./ArrivalList";
 import { RideCard } from "./RideCard";
+import { ScheduleView } from "./ScheduleView";
 import { TicketDialog } from "./Ticket";
 import { VanMap } from "./VanMap";
 import { VanPanel } from "./VanPanel";
@@ -27,6 +29,13 @@ function LiveSkeleton() {
 }
 
 export function LiveView() {
+  const { student } = useStudent();
+  if (student && !isLocalOnlyStudent(student)) return <ScheduleView student={student} />;
+  return <SimulatedLiveView />;
+}
+
+/** The simulated live map, shown only for the demo profile. */
+function SimulatedLiveView() {
   const { student } = useStudent();
   const sim = useVanSimulation();
   const [reservations] = useReservations();

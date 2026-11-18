@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { useAuthSessionGuard, useStudent } from "@/lib/auth";
+import { isLocalOnlyStudent } from "@/lib/firebaseAuth";
 import { BRAND_ASSETS, CAMPUS_LABEL } from "@/lib/constants";
 import { toggleDemoPanel } from "@/lib/demo";
 import { AlertBanner } from "./AlertBanner";
@@ -13,7 +14,7 @@ import { Footer } from "./Footer";
 import { NAV_ITEMS, isActive } from "./nav";
 import { Toaster } from "./Toaster";
 
-function TopBar({ subtitle }: { subtitle?: string }) {
+function TopBar({ subtitle, demo = true }: { subtitle?: string; demo?: boolean }) {
   return (
     <header className="sticky top-0 z-40 bg-maroon-700 text-white shadow-[0_1px_0_rgb(201_162_39/0.9),0_6px_20px_-10px_rgb(72_0_20/0.6)]">
       <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-4 sm:h-16 sm:px-6">
@@ -35,6 +36,7 @@ function TopBar({ subtitle }: { subtitle?: string }) {
           {subtitle ? (
             <span className="hidden text-sm text-white/80 md:inline">{subtitle}</span>
           ) : null}
+          {demo ? (
           <button
             type="button"
             onClick={toggleDemoPanel}
@@ -47,13 +49,14 @@ function TopBar({ subtitle }: { subtitle?: string }) {
             </span>
             Demo data
           </button>
+          ) : null}
         </div>
       </div>
     </header>
   );
 }
 
-function Sidebar({ pathname }: { pathname: string }) {
+function Sidebar({ pathname, demo }: { pathname: string; demo: boolean }) {
   return (
     <nav
       aria-label="Primary"
@@ -84,6 +87,7 @@ function Sidebar({ pathname }: { pathname: string }) {
           );
         })}
       </ul>
+      {demo ? (
       <div className="mt-auto rounded-xl border border-line bg-paper p-3 text-xs leading-relaxed text-ink-600">
         <p className="font-semibold text-ink-900">Presenting?</p>
         <p>
@@ -91,6 +95,7 @@ function Sidebar({ pathname }: { pathname: string }) {
           demo controls.
         </p>
       </div>
+      ) : null}
     </nav>
   );
 }
@@ -160,6 +165,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  const demo = isLocalOnlyStudent(student);
+
   return (
     <div className="flex min-h-dvh flex-col">
       <a
@@ -168,10 +175,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <TopBar subtitle={`${student.name.split(" ")[0]} · ${CAMPUS_LABEL[student.campus]}`} />
-      <AlertBanner />
+      <TopBar subtitle={`${student.name.split(" ")[0]} · ${CAMPUS_LABEL[student.campus]}`} demo={demo} />
+      {demo ? <AlertBanner /> : null}
       <div className="mx-auto flex w-full max-w-[1400px] flex-1">
-        <Sidebar pathname={pathname} />
+        <Sidebar pathname={pathname} demo={demo} />
         <div className="flex min-w-0 flex-1 flex-col">
           <main id="main" className="flex-1 px-4 pt-5 pb-8 sm:px-6 lg:px-8 lg:pt-8">
             {children}
@@ -181,7 +188,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
       <BottomNav pathname={pathname} />
       <Toaster />
-      <DemoMode />
+      {demo ? <DemoMode /> : null}
     </div>
   );
 }

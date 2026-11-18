@@ -11,6 +11,8 @@ interface VanMapProps {
   traffic: TrafficLevel;
   selectedId: string | null;
   onSelect: (vanId: string) => void;
+  /** Route and pickups only: hides the simulated traffic and "simulated" notes. */
+  scheduleOnly?: boolean;
 }
 
 const LOAD_TIMEOUT_MS = 9000;
@@ -23,7 +25,7 @@ declare global {
 }
 
 /** Google Map when a key works, otherwise the styled SVG fallback. Never shows a broken map. */
-export function VanMap({ vans, traffic, selectedId, onSelect }: VanMapProps) {
+export function VanMap({ vans, traffic, selectedId, onSelect, scheduleOnly = false }: VanMapProps) {
   const [failed, setFailed] = useState(API_KEY === "");
   const [ready, setReady] = useState(false);
 
@@ -63,12 +65,16 @@ export function VanMap({ vans, traffic, selectedId, onSelect }: VanMapProps) {
       <div className="pointer-events-none absolute top-3 left-3 z-30">
         <Legend />
       </div>
-      <div className="pointer-events-none absolute right-3 bottom-3 z-30">
-        <TrafficChip level={traffic} />
-      </div>
-      <div className="pointer-events-none absolute bottom-3 left-3 z-30">
-        <SimulatedNote />
-      </div>
+      {scheduleOnly ? null : (
+        <>
+          <div className="pointer-events-none absolute right-3 bottom-3 z-30">
+            <TrafficChip level={traffic} />
+          </div>
+          <div className="pointer-events-none absolute bottom-3 left-3 z-30">
+            <SimulatedNote />
+          </div>
+        </>
+      )}
     </div>
   );
 }
