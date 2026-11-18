@@ -63,7 +63,7 @@ All brand assets were downloaded from fordham.edu and verified. See [public/bran
 
 - `app/`: Next.js App Router pages, one folder per tab (`groups`, `plan`, `classmates`, `profile`), plus the Live page at the root, and the root layout.
 - `components/`: UI building blocks grouped by feature (`auth`, `live`, `plan`, `groups`, `classmates`, `profile`, `shell` for the app frame, alert banner, toasts, and demo mode, `ui` for shared pieces).
-- `lib/`: shared logic and data. `lib/types.ts` is the shared contract that every module imports its domain types from. `lib/constants.ts` holds brand colors, regions, and fares. `lib/vanSimulation.ts` is the simulated live feed. `lib/planner.ts` builds commute options. `lib/matching.ts` scores classmates. `lib/mockData.ts` and `lib/alerts.ts` hold seeded groups, students, and service alerts. `lib/storage.ts` is the only persistence layer, so it can move to Supabase later without touching the UI.
+- `lib/`: shared logic and data. `lib/types.ts` is the shared contract that every module imports its domain types from. `lib/constants.ts` holds brand colors, regions, and fares. `lib/vanSimulation.ts` is the simulated live feed. `lib/planner.ts` builds commute options. `lib/matching.ts` scores classmates. `lib/mockData.ts` and `lib/alerts.ts` hold seeded groups, students, and service alerts. `lib/storage.ts` holds local state (reservations, groups, chats). `lib/firebase.ts` and `lib/firebaseAuth.ts` handle accounts and saved profiles in Firestore.
 - `public/brand/`: the Fordham logo, Ram Van images, and mascot, with a README listing their sources.
 
 ## 60-second demo script
@@ -72,7 +72,7 @@ All brand assets were downloaded from fordham.edu and verified. See [public/bran
 2. **0:08, live map.** "Fordham tracks vans internally but students cannot see them. Ram Hub shows every van." Point at the legend: maroon outline is heading to Rose Hill, blue is heading to Lincoln Center, and the number on each icon is the number painted on the van.
 3. **0:15, reserve.** Tap a van in "Arriving soonest". Show ETA, next stop, and the seat grid. Pick an open seat, tap Reserve, confirm, then "View ticket" to show the QR boarding pass and the one-minute forfeiture note.
 4. **0:28, demo mode.** Press `D`. Press `3` to fill a van, open that van on the map, and tap "Join waitlist". Press `1` to fast-forward: within about 15 seconds a seat opens and the toast confirms your new seat. Press `2` to inject a delay and watch the ETA and status change. Press `4` to bring out vans 5 and 6.
-5. **0:42, plan.** Go to Plan. Origin is already your home town. Tap "Find routes" and point at the Fastest and Cheapest badges and the leave-by time.
+5. **0:42, plan.** Go to Plan. Origin is already your home town. Tap "Plan my commute" (or "Compare routes") and point at the Fastest and Cheapest badges and the leave-by time.
 6. **0:50, groups and classmates.** Go to Groups, tap "For you", join a group, open its chat. Go to Classmates and show a 100% match next to a private student who appears as initials only.
 7. **0:58, reset.** Press `D`, then `0`. Everything is back to the start for the next judge.
 
@@ -83,7 +83,8 @@ All brand assets were downloaded from fordham.edu and verified. See [public/bran
 - **Walk up to the right van.** Every icon carries the painted van number and a direction color, so nobody boards the wrong one.
 - **More than the van.** Most Fordham commuters come from the boroughs, Long Island, Westchester, New Jersey, and Connecticut. The planner compares every realistic way in, and groups and classmate matching turn a lonely commute into a shared one.
 - **Privacy first.** Names are hidden by default, classmates see initials until you opt in, and every card has Report and Block.
-- **Ready for real data.** Types, storage, and the simulation are separated, so swapping the simulated feed for Samsara and localStorage for Supabase does not touch the UI.
+- **Real accounts, secured.** Sign up with any email (8+ character password) or Google through Firebase Authentication. Profiles are saved in Firestore and follow you to any device, and security rules mean each student can only read and write their own data.
+- **Ready for real data.** Types, storage, and the simulation are separated, so swapping the simulated feed for Fordham's Samsara GPS does not touch the UI.
 
 ## Design choices and known limitations
 

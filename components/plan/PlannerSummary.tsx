@@ -19,8 +19,9 @@ function Tile({ icon, title, value, tone }: TileProps) {
   return (
     <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 ${tone}`}>
       <span aria-hidden className="shrink-0">{icon}</span>
-      <p className="min-w-0 text-sm leading-snug text-ink-700">
-        <span className="font-bold text-ink-900">{title}:</span> {value}
+      <p className="min-w-0 leading-snug">
+        <span className="block text-[11px] font-bold tracking-wide text-ink-600 uppercase">{title}</span>
+        <span className="block text-sm font-semibold text-ink-900">{value}</span>
       </p>
     </div>
   );
@@ -34,7 +35,8 @@ export function PlannerSummary({ options }: PlannerSummaryProps) {
   const cheapest = find(options, "cheapest");
   const fewest = find(options, "fewest-transfers");
   return (
-    <div className="grid gap-2.5 sm:grid-cols-3" role="list" aria-label="Best options">
+    <div className="@container">
+    <div className="grid gap-2.5 @xl:grid-cols-3" role="list" aria-label="Best options">
       {fastest ? (
         <div role="listitem">
           <Tile icon={<Zap size={18} className="text-gold-600" />} title="Fastest" value={`${MODE_LABEL[fastest.mode]}, ${formatDuration(fastest.durationMinutes)}`} tone="border-gold-400/60 bg-gold-100/50" />
@@ -47,9 +49,10 @@ export function PlannerSummary({ options }: PlannerSummaryProps) {
       ) : null}
       {fewest ? (
         <div role="listitem">
-          <Tile icon={<Repeat size={18} className="text-lc-600" />} title="Fewest transfers" value={`${MODE_LABEL[fewest.mode]}, ${fewest.transfers}`} tone="border-lc-500/30 bg-lc-50" />
+          <Tile icon={<Repeat size={18} className="text-lc-600" />} title="Fewest transfers" value={`${MODE_LABEL[fewest.mode]}, ${fewest.transfers === 0 ? "no transfers" : fewest.transfers === 1 ? "1 transfer" : `${fewest.transfers} transfers`}`} tone="border-lc-500/30 bg-lc-50" />
         </div>
       ) : null}
+    </div>
     </div>
   );
 }
