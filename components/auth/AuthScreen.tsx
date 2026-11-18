@@ -61,6 +61,8 @@ const DEMO_STUDENT: Omit<Student, "id"> = {
 
 type AuthMode = "signup" | "signin";
 
+const MIN_PASSWORD_LENGTH = 8;
+
 const STEPS = ["Sign in", "Your commute", "Classes and privacy"] as const;
 
 function StepDots({ step }: { step: number }) {
@@ -139,7 +141,9 @@ export function AuthScreen() {
   const validate = (): string | null => {
     if (step === 0) {
       if (!isValidEmail(draft.email)) return "Enter a valid email address.";
-      if (draft.password.length < 6) return "Use a password with at least 6 characters.";
+      if (mode === "signup" && draft.password.length < MIN_PASSWORD_LENGTH)
+        return `Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`;
+      if (mode === "signin" && !draft.password) return "Enter your password.";
       if (mode === "signup" && draft.name.trim().length < 2)
         return "Enter your name so drivers and classmates know who you are.";
     }
@@ -286,7 +290,7 @@ export function AuthScreen() {
                     id="password"
                     type="password"
                     autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                    placeholder={mode === "signup" ? "At least 6 characters" : ""}
+                    placeholder={mode === "signup" ? `At least ${MIN_PASSWORD_LENGTH} characters` : ""}
                     className="input"
                     value={draft.password}
                     onChange={(e) => patch({ password: e.target.value })}
