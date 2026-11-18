@@ -5,8 +5,10 @@ import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useGroupMembership } from "@/lib/accounts/hooks";
 import { useStudent } from "@/lib/auth";
-import { EMPTY_FILTERS, matchesFilters } from "@/lib/groups";
+import { livesOnCampus } from "@/lib/constants";
+import { EMPTY_FILTERS, isIntercampus, matchesFilters, mergeGroups } from "@/lib/groups";
 import type { GroupFilterState } from "@/lib/groups";
 import { MOCK_GROUPS, MOCK_STUDENTS } from "@/lib/mockData";
 import { STORAGE_KEYS, useStoredState } from "@/lib/storage";
@@ -17,62 +19,77 @@ import { GroupCard } from "./GroupCard";
 import { GroupChat } from "./GroupChat";
 import { GroupFilters } from "./GroupFilters";
 
-const NO_IDS: string[] = [];
 const NO_GROUPS: Group[] = [];
 const NO_CHATS: Record<string, ChatMessage[]> = {};
 
 export function GroupsView() {
   const { student } = useStudent();
-  const [joined, setJoined] = useStoredState<string[]>(STORAGE_KEYS.joinedGroups, NO_IDS);
+  const membership = useGroupMembership(student);
+  const { joinedIds, memberCount, toggle, join } = membership;
   const [custom, setCustom] = useStoredState<Group[]>(STORAGE_KEYS.customGroups, NO_GROUPS);
   const [chats, setChats] = useStoredState<Record<string, ChatMessage[]>>(STORAGE_KEYS.chats, NO_CHATS);
   const [filters, setFilters] = useState<GroupFilterState>(EMPTY_FILTERS);
   const [creating, setCreating] = useState(false);
   const [chatGroupId, setChatGroupId] = useState<string | null>(null);
 
-  const allGroups = useMemo(() => [...custom, ...MOCK_GROUPS], [custom]);
-  const joinedSet = useMemo(() => new Set(joined), [joined]);
+  const resident = student !== null && livesOnCampus(student);
+  const allGroups = useMemo(() => mergeGroups(custom, MOCK_GROUPS), [custom]);
   const visible = useMemo(() => allGroups.filter((g) => matchesFilters(g, filters)), [allGroups, filters]);
-  const mine = useMemo(() => visible.filter((g) => joinedSet.has(g.id)), [visible, joinedSet]);
-  const others = useMemo(() => visible.filter((g) => !joinedSet.has(g.id)), [visible, joinedSet]);
+  const between = useMemo(
+    () => (resident ? visible.filter((g) => isIntercampus(g) && !joinedIds.has(g.id)) : []),
+    [resident, visible, joinedIds],
+  );
+  const mine = useMemo(() => visible.filter((g) => joinedIds.has(g.id)), [visible, joinedIds]);
+  const others = useMemo(
+    () => visible.filter((g) => !joinedIds.has(g.id) && !(resident && isIntercampus(g))),
+    [visible, joinedIds, resident],
+  );
   const chatGroup = chatGroupId ? (allGroups.find((g) => g.id === chatGroupId) ?? null) : null;
 
   const forYouActive =
     student !== null &&
-    filters.region === student.homeRegion &&
-    filters.campus === student.campus &&
     filters.mode === "All" &&
     filters.time === "All" &&
-    filters.days.length === 0;
+    filters.days.length === 0 &&
+    (livesOnCampus(student)
+      ? filters.kind === "intercampus" && filters.region === "All" && filters.campus === (student.residenceCampus ?? student.campus)
+      : filters.kind === "All" && filters.region === student.homeRegion && filters.campus === student.campus);
 
   const onForYou = useCallback((): void => {
     if (!student) return;
-    setFilters(forYouActive ? EMPTY_FILTERS : { ...EMPTY_FILTERS, region: student.homeRegion, campus: student.campus });
+    if (forYouActive) {
+      setFilters(EMPTY_FILTERS);
+      return;
+    }
+    if (livesOnCampus(student)) {
+      setFilters({ ...EMPTY_FILTERS, kind: "intercampus", campus: student.residenceCampus ?? student.campus });
+      return;
+    }
+    setFilters({ ...EMPTY_FILTERS, region: student.homeRegion, campus: student.campus });
   }, [student, forYouActive]);
 
   const onToggleJoin = useCallback(
-    (group: Group): void => {
-      if (joinedSet.has(group.id)) {
-        setJoined((prev) => prev.filter((id) => id !== group.id));
+    async (group: Group): Promise<void> => {
+      const nowJoined = await toggle(group);
+      if (nowJoined) {
+        toast({ title: "Joined group", message: `You can now chat with ${group.name}.`, tone: "success" });
+      } else {
         if (chatGroupId === group.id) setChatGroupId(null);
         toast({ title: "Left group", message: group.name, tone: "info" });
-      } else {
-        setJoined((prev) => (prev.includes(group.id) ? prev : [...prev, group.id]));
-        toast({ title: "Joined group", message: `You can now chat with ${group.name}.`, tone: "success" });
       }
     },
-    [joinedSet, setJoined, chatGroupId],
+    [toggle, chatGroupId],
   );
 
   const onCreate = useCallback(
     (group: Group): void => {
       setCustom((prev) => [group, ...prev]);
-      setJoined((prev) => [...prev, group.id]);
+      void join(group.id);
       setCreating(false);
       setFilters(EMPTY_FILTERS);
       toast({ title: "Group created", message: `${group.name} is live and you are in it.`, tone: "success" });
     },
-    [setCustom, setJoined],
+    [setCustom, join],
   );
 
   const onSaveChat = useCallback(
@@ -83,7 +100,7 @@ export function GroupsView() {
   );
 
   const renderCard = (g: Group): ReactNode => (
-    <GroupCard key={g.id} group={g} joined={joinedSet.has(g.id)} onToggleJoin={onToggleJoin} onOpenChat={(grp) => setChatGroupId(grp.id)} />
+    <GroupCard key={g.id} group={g} joined={joinedIds.has(g.id)} memberCount={memberCount(g)} onToggleJoin={(grp) => void onToggleJoin(grp)} onOpenChat={(grp) => setChatGroupId(grp.id)} />
   );
 
   return (
@@ -132,6 +149,13 @@ export function GroupsView() {
         />
       ) : (
         <div className="space-y-8">
+          {between.length > 0 ? (
+            <section aria-labelledby="between-campuses">
+              <h2 id="between-campuses" className="section-title mb-1">Between campuses <span className="text-base text-ink-400">({between.length})</span></h2>
+              <p className="mb-3 text-sm text-ink-600">Ram Van rides between Rose Hill and Lincoln Center, about every 30 minutes.</p>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{between.map(renderCard)}</div>
+            </section>
+          ) : null}
           {mine.length > 0 ? (
             <section aria-labelledby="your-groups">
               <h2 id="your-groups" className="section-title mb-3">Your groups <span className="text-base text-ink-400">({mine.length})</span></h2>
@@ -140,7 +164,7 @@ export function GroupsView() {
           ) : null}
           {others.length > 0 ? (
             <section aria-labelledby="all-groups">
-              <h2 id="all-groups" className="section-title mb-3">{mine.length > 0 ? "More groups" : "All groups"} <span className="text-base text-ink-400">({others.length})</span></h2>
+              <h2 id="all-groups" className="section-title mb-3">{mine.length > 0 || between.length > 0 ? "More groups" : "All groups"} <span className="text-base text-ink-400">({others.length})</span></h2>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{others.map(renderCard)}</div>
             </section>
           ) : null}
@@ -148,7 +172,7 @@ export function GroupsView() {
       )}
 
       {creating && student ? <CreateGroupDialog student={student} onCreate={onCreate} onClose={() => setCreating(false)} /> : null}
-      {chatGroup && student && joinedSet.has(chatGroup.id) ? (
+      {chatGroup && student && joinedIds.has(chatGroup.id) ? (
         <GroupChat
           key={chatGroup.id}
           group={chatGroup}

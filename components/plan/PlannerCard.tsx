@@ -11,6 +11,8 @@ interface PlannerCardProps {
   origin: string;
   campus: Campus;
   expanded: boolean;
+  /** Pinned Ram Van option for students who live on campus. */
+  betweenCampuses?: boolean;
   onToggle: (id: string) => void;
 }
 
@@ -30,15 +32,16 @@ function TagChip({ tag }: { tag: TransitTag }) {
   );
 }
 
-export function PlannerCard({ option, origin, campus, expanded, onToggle }: PlannerCardProps) {
+export function PlannerCard({ option, origin, campus, expanded, betweenCampuses = false, onToggle }: PlannerCardProps) {
   const involvesVan = option.steps.some((s) => s.mode === "ram-van");
   const ring = option.tags.length > 0 ? TAG_STYLE[option.tags[0]].ring : "";
   const panelId = `plan-steps-${option.id}`;
 
   return (
     <article className={`card animate-rise overflow-hidden ${ring}`}>
-      {option.tags.length > 0 ? (
+      {option.tags.length > 0 || betweenCampuses ? (
         <div className="flex flex-wrap gap-1.5 border-b border-line bg-paper/70 px-4 py-2">
+          {betweenCampuses ? <span className="chip-gold font-bold tracking-wide uppercase">Between campuses</span> : null}
           {option.tags.map((tag) => (
             <TagChip key={tag} tag={tag} />
           ))}

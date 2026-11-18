@@ -21,7 +21,26 @@ export function timeBucketOf(hhmm: string): TimeBucket {
   return "late";
 }
 
+export type KindFilter = "All" | "commute" | "intercampus";
+
+export const KIND_OPTIONS: Array<{ id: KindFilter; label: string }> = [
+  { id: "All", label: "All" },
+  { id: "commute", label: "Home to campus" },
+  { id: "intercampus", label: "Between campuses" },
+];
+
+export function isIntercampus(group: Pick<Group, "kind">): boolean {
+  return group.kind === "intercampus";
+}
+
+/** Custom groups first, then seed groups, deduped by id. */
+export function mergeGroups(custom: Group[], seed: Group[]): Group[] {
+  const seen = new Set<string>();
+  return [...custom, ...seed].filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
+}
+
 export interface GroupFilterState {
+  kind: KindFilter;
   region: Region | "All";
   mode: TransitMode | "All";
   campus: Campus | "All";
@@ -30,6 +49,7 @@ export interface GroupFilterState {
 }
 
 export const EMPTY_FILTERS: GroupFilterState = {
+  kind: "All",
   region: "All",
   mode: "All",
   campus: "All",
@@ -39,6 +59,7 @@ export const EMPTY_FILTERS: GroupFilterState = {
 
 export function activeFilterCount(f: GroupFilterState): number {
   return (
+    (f.kind !== "All" ? 1 : 0) +
     (f.region !== "All" ? 1 : 0) +
     (f.mode !== "All" ? 1 : 0) +
     (f.campus !== "All" ? 1 : 0) +
@@ -48,18 +69,14 @@ export function activeFilterCount(f: GroupFilterState): number {
 }
 
 export function matchesFilters(group: Group, f: GroupFilterState): boolean {
+  if (f.kind === "intercampus" && !isIntercampus(group)) return false;
+  if (f.kind === "commute" && isIntercampus(group)) return false;
   if (f.region !== "All" && group.region !== f.region) return false;
   if (f.mode !== "All" && group.mode !== f.mode) return false;
   if (f.campus !== "All" && group.campus !== f.campus) return false;
   if (f.time !== "All" && timeBucketOf(group.departureTime) !== f.time) return false;
   if (f.days.length > 0 && !f.days.every((d) => group.days.includes(d))) return false;
   return true;
-}
-
-/** Member count shown on a card: the student counts once when joined. */
-export function displayMemberCount(group: Group, joined: boolean): number {
-  const base = group.isCustom ? Math.max(0, group.memberCount - 1) : group.memberCount;
-  return base + (joined ? 1 : 0);
 }
 
 /* ----------------------------------------------------------------- Chat */

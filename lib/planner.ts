@@ -1,4 +1,4 @@
-import { CAMPUS_LABEL, MODE_LABEL, PEAK_WINDOWS, RAM_VAN_FARE, SUBWAY_FARE, fromMinutes, toMinutes } from "./constants";
+import { CAMPUS_LABEL, MODE_LABEL, PEAK_WINDOWS, RAM_VAN_FARE, SUBWAY_FARE, fromMinutes, livesOnCampus, otherCampus, toMinutes } from "./constants";
 import { fetchGoogleOptions } from "./plannerGoogle";
 import {
   HUB_LEGS,
@@ -10,7 +10,7 @@ import {
   type OriginProfile,
   type RailRoute,
 } from "./plannerData";
-import type { Campus, Region, TransitMode, TransitOption, TransitStep, TransitTag } from "./types";
+import type { Campus, Region, Student, TransitMode, TransitOption, TransitStep, TransitTag } from "./types";
 
 export interface PlanRequest {
   origin: string;
@@ -25,6 +25,33 @@ export const KNOWN_ORIGINS: Array<{ name: string; region: Region }> = ORIGIN_PRO
   name: p.name,
   region: p.region,
 }));
+
+/** Exact KNOWN_ORIGINS names of the two campuses. */
+export const CAMPUS_ORIGIN: Record<Campus, string> = {
+  "rose-hill": "Rose Hill",
+  "lincoln-center": "Lincoln Center",
+};
+
+export interface PlannerDefaults {
+  origin: string;
+  campus: Campus;
+}
+
+/**
+ * Starting point and destination for a student with no saved planner prefs. Residents start at
+ * the campus they live on and head to their class campus (or the other campus when it is the same).
+ * Commuters start from their home area and head to their class campus.
+ */
+export function plannerDefaultsFor(student: Student | null): PlannerDefaults {
+  if (student && livesOnCampus(student)) {
+    const residence = student.residenceCampus ?? student.campus;
+    return {
+      origin: CAMPUS_ORIGIN[residence],
+      campus: student.campus !== residence ? student.campus : otherCampus(residence),
+    };
+  }
+  return { origin: student?.homeArea ?? "", campus: student?.campus ?? "rose-hill" };
+}
 
 const MOCK_DELAY_MS = 500;
 const GOOGLE_TIMEOUT_MS = 6000;

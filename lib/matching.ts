@@ -1,4 +1,4 @@
-import { initialsOf, toMinutes } from "./constants";
+import { initialsOf, livesOnCampus, toMinutes } from "./constants";
 import type { ClassmateMatch, Student } from "./types";
 
 /** Maximum points per factor. They sum to 100. */
@@ -13,6 +13,8 @@ const AREA_POINTS = 10;
 export interface MatchOptions {
   /** Student ids that must never appear (blocked by the signed-in student). */
   blockedIds?: string[];
+  /** Keep candidates that score 0 (reason "On Ram Hub"). Blocked students and me stay excluded. */
+  includeZeroScores?: boolean;
 }
 
 /** Full name when the student opted in to sharing, otherwise initials such as "J.M.". */
@@ -59,7 +61,16 @@ function scoreOne(me: Student, other: Student): ClassmateMatch {
     reasons.push(`${sharedCourses.length} shared ${sharedCourses.length === 1 ? "class" : "classes"}`);
   }
 
-  if (me.homeRegion === other.homeRegion) {
+  const sameResidence =
+    livesOnCampus(me) &&
+    livesOnCampus(other) &&
+    me.residenceCampus !== undefined &&
+    me.residenceCampus === other.residenceCampus;
+
+  if (sameResidence) {
+    score += Math.min(REGION_POINTS + AREA_POINTS, MAX_ROUTE_POINTS);
+    reasons.push(other.residenceCampus === "rose-hill" ? "Also lives at Rose Hill" : "Also lives at Lincoln Center");
+  } else if (me.homeRegion === other.homeRegion) {
     let route = REGION_POINTS;
     // The area is only ever compared and revealed when the classmate opted in.
     if (other.shareProfile && sameText(me.homeArea, other.homeArea)) {
@@ -85,6 +96,8 @@ function scoreOne(me: Student, other: Student): ClassmateMatch {
     reasons.push(other.campus === "rose-hill" ? "Also at Rose Hill" : "Also at Lincoln Center");
   }
 
+  if (reasons.length === 0) reasons.push("On Ram Hub");
+
   return {
     student: other,
     score: Math.max(0, Math.min(100, Math.round(score))),
@@ -94,7 +107,7 @@ function scoreOne(me: Student, other: Student): ClassmateMatch {
   };
 }
 
-/** Ranked classmates for `me`. Excludes me, blocked students and anyone scoring 0. */
+/** Ranked classmates for `me`. Excludes me, blocked students and (unless includeZeroScores) anyone scoring 0. */
 export function matchClassmates(
   me: Student,
   candidates: Student[],
@@ -104,6 +117,6 @@ export function matchClassmates(
   return candidates
     .filter((c) => c.id !== me.id && !blocked.has(c.id))
     .map((c) => scoreOne(me, c))
-    .filter((m) => m.score > 0)
+    .filter((m) => options.includeZeroScores === true || m.score > 0)
     .sort((a, b) => b.score - a.score || b.sharedCourses.length - a.sharedCourses.length || a.student.id.localeCompare(b.student.id));
 }

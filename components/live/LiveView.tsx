@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useStudent } from "@/lib/auth";
-import { isLocalOnlyStudent } from "@/lib/firebaseAuth";
+import { isDemoStudent } from "@/lib/accounts";
 import { useVanSimulation } from "@/lib/vanSimulation";
 import { ArrivalList, type DirectionFilter } from "./ArrivalList";
 import { RideCard } from "./RideCard";
@@ -30,7 +30,7 @@ function LiveSkeleton() {
 
 export function LiveView() {
   const { student } = useStudent();
-  if (student && !isLocalOnlyStudent(student)) return <ScheduleView student={student} />;
+  if (student && !isDemoStudent(student)) return <ScheduleView student={student} />;
   return <SimulatedLiveView />;
 }
 

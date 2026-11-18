@@ -3,7 +3,9 @@
 import { Clock, FastForward, RotateCcw, Sunrise, UsersRound, X, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DEMO_FAST_FORWARD, DEMO_TOGGLE_EVENT } from "@/lib/demo";
-import { clearAllStored } from "@/lib/storage";
+import { useStudent } from "@/lib/auth";
+import { isDemoStudent } from "@/lib/accounts";
+import { resetDemoData } from "@/lib/demo";
 import { toast } from "@/lib/toast";
 import { useVanSimulation, vanSim } from "@/lib/vanSimulation";
 
@@ -26,6 +28,7 @@ export function DemoMode() {
   const [open, setOpen] = useState(false);
   const [peakForced, setPeakForced] = useState(false);
   const { speedMultiplier } = useVanSimulation();
+  const { student } = useStudent();
   const fast = speedMultiplier > 1;
 
   const toggleFast = useCallback(() => {
@@ -70,11 +73,16 @@ export function DemoMode() {
   }, [peakForced]);
 
   const resetAll = useCallback(() => {
-    vanSim.reset();
-    clearAllStored({ keepStudent: true });
+    resetDemoData(student);
     setPeakForced(false);
-    toast({ title: "Demo reset", message: "Vans, seats, reservations, groups, and chats are back to the start.", tone: "success" });
-  }, []);
+    toast({
+      title: "Demo reset",
+      message: student && isDemoStudent(student)
+        ? "Vans, seats, reservations, groups, and chats are back to the start."
+        : "Vans, seats, and reservations are back to the start. Your account is untouched.",
+      tone: "success",
+    });
+  }, [student]);
 
   useEffect(() => {
     const onToggle = () => setOpen((prev) => !prev);
@@ -125,7 +133,7 @@ export function DemoMode() {
     { key: "2", label: "Inject a delay", hint: "Slow the next arriving van", icon: Clock, run: injectDelay },
     { key: "3", label: "Fill a van", hint: "Show full and waitlist", icon: UsersRound, run: fillVan },
     { key: "4", label: peakForced ? "End peak service" : "Peak service", hint: "Bring out vans 5 and 6", icon: Sunrise, active: peakForced, run: togglePeak },
-    { key: "0", label: "Reset everything", hint: "Clear all demo data", icon: RotateCcw, run: resetAll },
+    { key: "0", label: "Reset demo data", hint: "Vans and tickets; accounts stay", icon: RotateCcw, run: resetAll },
   ];
 
   return (

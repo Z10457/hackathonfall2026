@@ -1,18 +1,18 @@
 import { Clock, MapPin, MessageCircle, Route, Users } from "lucide-react";
 import { CAMPUS_LABEL, DAYS, MODE_LABEL, formatTime } from "@/lib/constants";
-import { displayMemberCount } from "@/lib/groups";
 import type { Group } from "@/lib/types";
 import { ModeIcon } from "./ModeIcon";
 
 interface GroupCardProps {
   group: Group;
   joined: boolean;
+  memberCount: number;
   onToggleJoin: (group: Group) => void;
   onOpenChat: (group: Group) => void;
 }
 
-export function GroupCard({ group, joined, onToggleJoin, onOpenChat }: GroupCardProps) {
-  const count = displayMemberCount(group, joined);
+export function GroupCard({ group, joined, memberCount, onToggleJoin, onOpenChat }: GroupCardProps) {
+  const count = memberCount;
   return (
     <article className={`card flex animate-rise flex-col gap-3 p-4 sm:p-5 ${joined ? "border-maroon-200 ring-1 ring-maroon-100" : ""}`}>
       <div className="flex items-start justify-between gap-3">
@@ -38,6 +38,7 @@ export function GroupCard({ group, joined, onToggleJoin, onOpenChat }: GroupCard
           {MODE_LABEL[group.mode]}
         </span>
         <span className={group.campus === "rose-hill" ? "chip-maroon" : "chip-blue"}>{CAMPUS_LABEL[group.campus]}</span>
+        {group.kind === "intercampus" ? <span className="chip-gold">Between campuses</span> : null}
         {group.isCustom ? <span className="chip-gold">Created by you</span> : null}
         {joined ? <span className="chip-green">Joined</span> : null}
       </div>

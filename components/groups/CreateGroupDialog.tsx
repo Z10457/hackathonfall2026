@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { CAMPUS_LABEL, DAYS, MODE_LABEL, REGIONS, WEEKDAYS } from "@/lib/constants";
+import { CAMPUS_LABEL, DAYS, MODE_LABEL, REGIONS, RESIDENCE_HOME, WEEKDAYS, livesOnCampus, otherCampus } from "@/lib/constants";
 import { makeId } from "@/lib/storage";
 import type { Campus, Day, Group, Region, Student, TransitMode } from "@/lib/types";
 import { Sheet } from "./Sheet";
@@ -13,7 +13,10 @@ interface CreateGroupDialogProps {
   onClose: () => void;
 }
 
+type GroupKind = "commute" | "intercampus";
+
 interface FormState {
+  kind: GroupKind;
   name: string;
   region: Region;
   origin: string;
@@ -49,7 +52,8 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 }
 
 export function CreateGroupDialog({ student, onCreate, onClose }: CreateGroupDialogProps) {
-  const [form, setForm] = useState<FormState>({
+  const [form, setForm] = useState<FormState>(() => ({
+    kind: livesOnCampus(student) ? "intercampus" : "commute",
     name: "",
     region: student.homeRegion,
     origin: student.homeArea,
@@ -59,12 +63,40 @@ export function CreateGroupDialog({ student, onCreate, onClose }: CreateGroupDia
     departureTime: "07:30",
     days: WEEKDAYS,
     description: "",
-  });
+  }));
   const [errors, setErrors] = useState<Errors>({});
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const chooseKind = (kind: GroupKind): void => {
+    if (kind === form.kind) return;
+    if (kind === "intercampus") {
+      const from = livesOnCampus(student) ? (student.residenceCampus ?? student.campus) : otherCampus(student.campus);
+      setForm((prev) => ({
+        ...prev,
+        kind,
+        mode: "ram-van",
+        origin: RESIDENCE_HOME[from].area,
+        region: RESIDENCE_HOME[from].region,
+        campus: otherCampus(from),
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        kind,
+        mode: student.commuteMode ?? "subway",
+        origin: livesOnCampus(student) ? "" : student.homeArea,
+        region: student.homeRegion,
+        campus: student.campus,
+      }));
+    }
+  };
+
+  const chooseFromCampus = (from: Campus): void => {
+    setForm((prev) => ({ ...prev, origin: RESIDENCE_HOME[from].area, region: RESIDENCE_HOME[from].region, campus: otherCampus(from) }));
   };
 
   const toggleDay = (day: Day): void => {
@@ -78,6 +110,7 @@ export function CreateGroupDialog({ student, onCreate, onClose }: CreateGroupDia
     if (Object.keys(found).length > 0) return;
     onCreate({
       id: makeId("grp"),
+      kind: form.kind,
       name: form.name.trim(),
       region: form.region,
       origin: form.origin.trim(),
@@ -95,7 +128,7 @@ export function CreateGroupDialog({ student, onCreate, onClose }: CreateGroupDia
 
   return (
     <Sheet
-      title="Create a commute group"
+      title={form.kind === "intercampus" ? "Create a between campuses group" : "Create a commute group"}
       subtitle="Find students who travel your way"
       onClose={onClose}
       footer={
@@ -111,11 +144,34 @@ export function CreateGroupDialog({ student, onCreate, onClose }: CreateGroupDia
     >
       <form id="create-group-form" onSubmit={submit} noValidate className="space-y-4 px-5 py-5">
         <div>
+          <p className="label" id="cg-kind-label">Group type</p>
+          <div role="group" aria-labelledby="cg-kind-label" className="grid grid-cols-2 gap-2">
+            {(["commute", "intercampus"] as const).map((k) => (
+              <button key={k} type="button" className="chip-toggle min-h-11 justify-center" aria-pressed={form.kind === k} onClick={() => chooseKind(k)}>
+                {k === "commute" ? "Home to campus" : "Between campuses"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
           <label className="label" htmlFor="cg-name">Group name</label>
           <input id="cg-name" className="input" value={form.name} maxLength={60} placeholder="Hicksville 7:42 crew" aria-invalid={Boolean(errors.name)} aria-describedby="cg-name-err" onChange={(e) => set("name", e.target.value)} />
           <FieldError id="cg-name-err" message={errors.name} />
         </div>
 
+        {form.kind === "intercampus" ? (
+          <div>
+            <p className="label" id="cg-from-label">Leaving from</p>
+            <div role="group" aria-labelledby="cg-from-label" className="grid grid-cols-2 gap-2">
+              {(Object.keys(CAMPUS_LABEL) as Campus[]).map((c) => (
+                <button key={c} type="button" className="chip-toggle min-h-11 justify-center" aria-pressed={form.campus === otherCampus(c)} onClick={() => chooseFromCampus(c)}>
+                  {CAMPUS_LABEL[c]}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="cg-region">Region</label>
@@ -129,10 +185,11 @@ export function CreateGroupDialog({ student, onCreate, onClose }: CreateGroupDia
             <FieldError id="cg-origin-err" message={errors.origin} />
           </div>
         </div>
+        )}
 
         <div>
           <label className="label" htmlFor="cg-route">Route</label>
-          <input id="cg-route" className="input" value={form.route} maxLength={120} placeholder="LIRR to Penn, then D train to Fordham Rd" aria-invalid={Boolean(errors.route)} aria-describedby="cg-route-err" onChange={(e) => set("route", e.target.value)} />
+          <input id="cg-route" className="input" value={form.route} maxLength={120} placeholder={form.kind === "intercampus" ? "Ram Van from the Rose Hill garage to 60th and Columbus" : "LIRR to Penn, then D train to Fordham Rd"} aria-invalid={Boolean(errors.route)} aria-describedby="cg-route-err" onChange={(e) => set("route", e.target.value)} />
           <FieldError id="cg-route-err" message={errors.route} />
         </div>
 
@@ -144,8 +201,8 @@ export function CreateGroupDialog({ student, onCreate, onClose }: CreateGroupDia
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="cg-campus">Campus</label>
-            <select id="cg-campus" className="input" value={form.campus} onChange={(e) => set("campus", e.target.value as Campus)}>
+            <label className="label" htmlFor="cg-campus">{form.kind === "intercampus" ? "Going to" : "Campus"}</label>
+            <select id="cg-campus" className="input" value={form.campus} onChange={(e) => (form.kind === "intercampus" ? chooseFromCampus(otherCampus(e.target.value as Campus)) : set("campus", e.target.value as Campus))}>
               {(Object.keys(CAMPUS_LABEL) as Campus[]).map((c) => (<option key={c} value={c}>{CAMPUS_LABEL[c]}</option>))}
             </select>
           </div>

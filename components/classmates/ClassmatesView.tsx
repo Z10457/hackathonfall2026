@@ -2,12 +2,12 @@
 
 import { EyeOff, Eye, ShieldOff } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useStudent } from "@/lib/auth";
-import { auth } from "@/lib/firebase";
-import { isLocalOnlyStudent, loadClassmateCards, publishClassmateCard } from "@/lib/firebaseAuth";
+import { dedupeById, isDemoStudent } from "@/lib/accounts";
+import { useClassmateCards } from "@/lib/accounts/hooks";
 import { initialsOf } from "@/lib/constants";
 import { matchClassmates } from "@/lib/matching";
 import { MOCK_STUDENTS } from "@/lib/mockData";
@@ -45,41 +45,15 @@ export function ClassmatesView() {
   const [reporting, setReporting] = useState<ClassmateMatch | null>(null);
   const [showBlocked, setShowBlocked] = useState(false);
 
-  const realAccount = student ? !isLocalOnlyStudent(student) : false;
-  const [realPeople, setRealPeople] = useState<Student[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const realAccount = student ? !isDemoStudent(student) : false;
+  // Real accounts see every other real account live (each once); the demo profile sees sample students.
+  const { cards: realPeople, error: loadError } = useClassmateCards(realAccount);
 
-  // Real accounts match against other real students in Firestore; the demo profile uses sample students.
-  useEffect(() => {
-    if (!student || !realAccount) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        // Make sure this student is discoverable too (covers accounts created before cards existed).
-        if (auth.currentUser?.uid === student.id) await publishClassmateCard(student);
-        const cards = await loadClassmateCards();
-        if (!cancelled) {
-          setRealPeople(cards);
-          setLoadError(false);
-        }
-      } catch (err) {
-        console.warn("Could not load classmates", err);
-        if (!cancelled) {
-          setRealPeople([]);
-          setLoadError(true);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [student, realAccount]);
-
-  const candidates = useMemo(() => (realAccount ? (realPeople ?? []) : MOCK_STUDENTS), [realAccount, realPeople]);
+  const candidates = useMemo(() => dedupeById(realAccount ? (realPeople ?? []) : MOCK_STUDENTS), [realAccount, realPeople]);
   const matches = useMemo(
     () =>
       student
-        ? matchClassmates(student, candidates, { blockedIds: blocked }).map((m) =>
+        ? matchClassmates(student, candidates, { blockedIds: blocked, includeZeroScores: realAccount }).map((m) =>
             // Real cards already hold the privacy-safe name (initials unless opted in).
             realAccount ? { ...m, displayName: m.student.name } : m,
           )

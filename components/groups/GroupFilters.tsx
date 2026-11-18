@@ -1,7 +1,7 @@
 import { Sparkles, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { CAMPUS_LABEL, DAYS, MODE_LABEL, REGIONS } from "@/lib/constants";
-import { TIME_BUCKETS, activeFilterCount } from "@/lib/groups";
+import { KIND_OPTIONS, TIME_BUCKETS, activeFilterCount } from "@/lib/groups";
 import type { GroupFilterState } from "@/lib/groups";
 import type { Campus, Day, TransitMode } from "@/lib/types";
 
@@ -73,6 +73,14 @@ export function GroupFilters({ filters, resultCount, forYouActive, onChange, onF
           ) : null}
         </div>
       </div>
+
+      <Row label="Type">
+        {KIND_OPTIONS.map((k) => (
+          <Chip key={k.id} active={filters.kind === k.id} onClick={() => onChange({ ...filters, kind: k.id })}>
+            {k.label}
+          </Chip>
+        ))}
+      </Row>
 
       <Row label="Region">
         <Chip active={filters.region === "All"} onClick={() => onChange({ ...filters, region: "All" })}>

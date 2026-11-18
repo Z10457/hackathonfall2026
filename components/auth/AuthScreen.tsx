@@ -1,52 +1,32 @@
 "use client";
 
 import { ArrowLeft, ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { CourseInput } from "@/components/ui/CourseInput";
-import { isValidEmail, useStudent } from "@/lib/auth";
-import { BRAND_ASSETS, CAMPUS_LABEL, REGIONS } from "@/lib/constants";
-import { auth } from "@/lib/firebase";
 import {
-  authErrorMessage,
-  createAccountWithEmail,
-  loadProfile,
-  saveProfile,
-  signInWithEmail,
-  signInWithGoogle,
-} from "@/lib/firebaseAuth";
-import { makeId } from "@/lib/storage";
+  AccountError,
+  BACKEND_KIND,
+  MIN_PASSWORD_LENGTH,
+  accountErrorCode,
+  accountErrorMessage,
+  accounts,
+  type AccountErrorCode,
+  type SignedInAccount,
+} from "@/lib/accounts";
+import { useStudent } from "@/lib/auth";
+import { BRAND_ASSETS, isFordhamEmail, normalizeEmail } from "@/lib/constants";
 import { toast } from "@/lib/toast";
-import type { Campus, Region, Student } from "@/lib/types";
-import type { User } from "firebase/auth";
+import type { Student } from "@/lib/types";
+import { EMPTY_DRAFT, studentFromDraft, validateTrips, type OnboardingDraft } from "./onboarding";
+import { RoleStep, TripDetailsStep } from "./TripSteps";
 
-interface Draft {
-  email: string;
-  password: string;
-  name: string;
-  campus: Campus;
-  homeRegion: Region;
-  homeArea: string;
-  arrivalTime: string;
-  courses: string[];
-  shareProfile: boolean;
-}
-
-const EMPTY_DRAFT: Draft = {
-  email: "",
-  password: "",
-  name: "",
-  campus: "rose-hill",
-  homeRegion: "Bronx",
-  homeArea: "",
-  arrivalTime: "09:30",
-  courses: [],
-  shareProfile: false,
-};
-
-/** Local-only profile so judges can try the app without an account. Never sent to Firebase. */
-const DEMO_STUDENT: Omit<Student, "id"> = {
+/** Local-only profile so judges can try the app without an account. Never sent to a backend. */
+const DEMO_STUDENT: Student = {
+  id: "demo-student",
   name: "Jordan Rivera",
   email: "jrivera42@fordham.edu",
+  role: "commuter",
   campus: "rose-hill",
   homeRegion: "Long Island",
   homeArea: "Hicksville",
@@ -61,9 +41,15 @@ const DEMO_STUDENT: Omit<Student, "id"> = {
 
 type AuthMode = "signup" | "signin";
 
-const MIN_PASSWORD_LENGTH = 8;
+const NOT_FORDHAM_MESSAGE = accountErrorMessage(new AccountError("not-fordham"));
 
-const STEPS = ["Sign in", "Your commute", "Classes and privacy"] as const;
+const STEPS = ["Account", "Getting around", "Your trips", "Classes and privacy"] as const;
+const LAST_STEP = STEPS.length - 1;
+
+interface FormError {
+  message: string;
+  code: AccountErrorCode | "validation";
+}
 
 function StepDots({ step }: { step: number }) {
   return (
@@ -80,33 +66,34 @@ function StepDots({ step }: { step: number }) {
   );
 }
 
+function resetHref(email: string): string {
+  return email.trim() ? `/reset-password?email=${encodeURIComponent(normalizeEmail(email))}` : "/reset-password";
+}
+
 export function AuthScreen() {
   const { saveStudent } = useStudent();
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<AuthMode>("signup");
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
-  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<OnboardingDraft>(EMPTY_DRAFT);
+  const [account, setAccount] = useState<SignedInAccount | null>(null);
+  const [error, setError] = useState<FormError | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const patch = (changes: Partial<Draft>) => {
+  const patch = (changes: Partial<OnboardingDraft>) => {
     setDraft((prev) => ({ ...prev, ...changes }));
     setError(null);
   };
 
-  /** After any sign-in: load a saved profile, or continue to onboarding. */
-  const afterSignIn = async (user: User) => {
-    const saved = await loadProfile(user.uid);
+  /** After any sign-in: load the saved profile, or continue to onboarding. */
+  const afterSignIn = async (signedIn: SignedInAccount) => {
+    const saved = await accounts.loadProfile(signedIn.uid);
     if (saved) {
       saveStudent(saved);
       toast({ title: `Welcome back, ${saved.name.split(" ")[0]}`, message: "Your saved profile is loaded.", tone: "success" });
       return;
     }
-    setDraft((prev) => ({
-      ...prev,
-      email: user.email ?? prev.email,
-      name: prev.name.trim() || user.displayName || "",
-      password: "",
-    }));
+    setAccount(signedIn);
+    setDraft((prev) => ({ ...prev, email: signedIn.email, name: prev.name.trim() || signedIn.displayName || "", password: "" }));
     setStep(1);
   };
 
@@ -116,65 +103,52 @@ export function AuthScreen() {
     try {
       await action();
     } catch (err) {
-      setError(authErrorMessage(err));
+      setError({ message: accountErrorMessage(err), code: accountErrorCode(err) });
     } finally {
       setBusy(false);
     }
   };
 
-  const handleGoogleLogin = () => run(async () => afterSignIn(await signInWithGoogle()));
+  const handleGoogle = () => run(async () => afterSignIn(await accounts.signInWithGoogle()));
 
   const handleEmailAuth = () =>
     run(async () => {
-      const user =
+      const signedIn =
         mode === "signup"
-          ? await createAccountWithEmail(draft.email, draft.password, draft.name)
-          : await signInWithEmail(draft.email, draft.password);
-      await afterSignIn(user);
+          ? await accounts.signUp(draft.email, draft.password, draft.name)
+          : await accounts.signIn(draft.email, draft.password);
+      await afterSignIn(signedIn);
     });
 
   const useDemoProfile = () => {
-    saveStudent({ ...DEMO_STUDENT, id: makeId("demo") });
+    saveStudent(DEMO_STUDENT);
     toast({ title: "Signed in with the demo profile", message: "Jordan Rivera, Rose Hill commuter. Saved only in this browser.", tone: "success" });
   };
 
   const validate = (): string | null => {
     if (step === 0) {
-      if (!isValidEmail(draft.email)) return "Enter a valid email address.";
+      if (mode === "signup" && draft.name.trim().length < 2) return "Enter your name so drivers and classmates know who you are.";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) return "Enter a valid email address.";
+      if (mode === "signup" && !isFordhamEmail(draft.email)) return NOT_FORDHAM_MESSAGE;
       if (mode === "signup" && draft.password.length < MIN_PASSWORD_LENGTH)
         return `Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`;
       if (mode === "signin" && !draft.password) return "Enter your password.";
-      if (mode === "signup" && draft.name.trim().length < 2)
-        return "Enter your name so drivers and classmates know who you are.";
     }
-    if (step === 1) {
-      if (draft.homeArea.trim().length < 2) return "Add your town or neighborhood, for example Hicksville or Astoria.";
-      if (!/^\d{2}:\d{2}$/.test(draft.arrivalTime)) return "Pick the time you usually need to be on campus.";
-    }
+    if (step === 2) return validateTrips(draft);
     return null;
   };
 
   const finish = () =>
     run(async () => {
-      const user = auth.currentUser;
-      if (!user) {
+      const uid = accounts.currentUid();
+      if (!account || uid !== account.uid) {
         setStep(0);
         throw new Error("Your sign-in expired. Please sign in again.");
       }
-      const student: Student = {
-        id: user.uid,
-        name: draft.name.trim() || user.displayName || "Ram Hub rider",
-        email: user.email ?? draft.email.trim(),
-        campus: draft.campus,
-        homeRegion: draft.homeRegion,
-        homeArea: draft.homeArea.trim(),
-        arrivalTime: draft.arrivalTime,
-        courses: draft.courses,
-        shareProfile: draft.shareProfile,
-      };
-      await saveProfile(student);
+      const student = studentFromDraft(draft, account.uid, account.email, account.displayName ?? "Ram Hub rider");
+      await accounts.saveProfile(student);
       saveStudent(student);
-      toast({ title: `Welcome to Ram Hub, ${student.name.split(" ")[0]}`, message: "Your commute is set up.", tone: "success" });
+      toast({ title: `Welcome to Ram Hub, ${student.name.split(" ")[0]}`, message: "You are all set.", tone: "success" });
     });
 
   const onSubmit = (event: FormEvent) => {
@@ -182,16 +156,16 @@ export function AuthScreen() {
     if (busy) return;
     const problem = validate();
     if (problem) {
-      setError(problem);
+      setError({ message: problem, code: "validation" });
       return;
     }
     if (step === 0) handleEmailAuth();
-    else if (step < STEPS.length - 1) setStep(step + 1);
+    else if (step < LAST_STEP) setStep(step + 1);
     else finish();
   };
 
-  const switchMode = () => {
-    setMode(mode === "signup" ? "signin" : "signup");
+  const switchMode = (next: AuthMode) => {
+    setMode(next);
     setError(null);
   };
 
@@ -215,7 +189,7 @@ export function AuthScreen() {
           className="h-10 w-auto self-start sm:h-12"
         />
         <div className="mt-10 animate-rise lg:mt-0">
-          <p className="text-[11px] font-bold tracking-[0.22em] text-gold-400 uppercase">The commuter app for Rams</p>
+          <p className="text-[11px] font-bold tracking-[0.22em] text-gold-400 uppercase">For commuters and residents</p>
           <h1 className="mt-3 text-5xl leading-[0.95] font-bold tracking-tight sm:text-6xl lg:text-7xl">
             Ram Hub
           </h1>
@@ -242,18 +216,22 @@ export function AuthScreen() {
             {step === 0 ? (
               <>
                 <header>
-                  <p className="eyebrow">Step 1 of 3</p>
+                  <p className="eyebrow">Step 1 of 4</p>
                   <h2 className="mt-1 text-3xl font-bold">{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
                   <p className="mt-2 text-sm text-ink-600">
-                    {mode === "signup" ? "Use any email address." : "Sign in to load your saved commute."}
+                    {mode === "signup" ? "Use your @fordham.edu email address." : "Sign in to load your saved profile."}
                   </p>
                 </header>
-                <button type="button" onClick={handleGoogleLogin} disabled={busy} className="btn-secondary w-full">
-                  Continue with Google
-                </button>
-                <div className="flex items-center gap-3 text-xs font-semibold tracking-wide text-ink-500 uppercase">
-                  <span className="h-px flex-1 bg-line" /> or use email <span className="h-px flex-1 bg-line" />
-                </div>
+                {accounts.supportsGoogle ? (
+                  <>
+                    <button type="button" onClick={handleGoogle} disabled={busy} className="btn-secondary w-full">
+                      Continue with Fordham Google
+                    </button>
+                    <div className="flex items-center gap-3 text-xs font-semibold tracking-wide text-ink-500 uppercase">
+                      <span className="h-px flex-1 bg-line" /> or use email <span className="h-px flex-1 bg-line" />
+                    </div>
+                  </>
+                ) : null}
                 {mode === "signup" ? (
                   <div>
                     <label className="label" htmlFor="name">Full name</label>
@@ -268,20 +246,27 @@ export function AuthScreen() {
                   </div>
                 ) : null}
                 <div>
-                  <label className="label" htmlFor="email">Email</label>
+                  <label className="label" htmlFor="email">Fordham email</label>
                   <input
                     id="email"
                     type="email"
                     inputMode="email"
                     autoComplete="email"
-                    placeholder="you@example.com"
+                    placeholder="you@fordham.edu"
                     className="input"
                     value={draft.email}
                     onChange={(e) => patch({ email: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="label" htmlFor="password">Password</label>
+                  <div className="mb-1.5 flex items-baseline justify-between">
+                    <label className="label !mb-0" htmlFor="password">Password</label>
+                    {mode === "signin" ? (
+                      <Link href={resetHref(draft.email)} className="text-xs font-semibold text-maroon-700 underline-offset-2 hover:underline">
+                        Forgot password?
+                      </Link>
+                    ) : null}
+                  </div>
                   <input
                     id="password"
                     type="password"
@@ -295,71 +280,13 @@ export function AuthScreen() {
               </>
             ) : null}
 
-            {step === 1 ? (
-              <>
-                <header>
-                  <p className="eyebrow">Step 2 of 3</p>
-                  <h2 className="mt-1 text-3xl font-bold">Your commute</h2>
-                  <p className="mt-2 text-sm text-ink-600">We use this to suggest groups and routes.</p>
-                </header>
-                <fieldset>
-                  <legend className="label">Home campus</legend>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(Object.keys(CAMPUS_LABEL) as Campus[]).map((campus) => (
-                      <button
-                        key={campus}
-                        type="button"
-                        aria-pressed={draft.campus === campus}
-                        onClick={() => patch({ campus })}
-                        className="min-h-12 cursor-pointer rounded-xl border border-line bg-white px-3 text-sm font-semibold text-ink-700 transition hover:border-maroon-300 aria-pressed:border-maroon-700 aria-pressed:bg-maroon-700 aria-pressed:text-white"
-                      >
-                        {CAMPUS_LABEL[campus]}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="label" htmlFor="region">Home region</label>
-                    <select
-                      id="region"
-                      className="input"
-                      value={draft.homeRegion}
-                      onChange={(e) => patch({ homeRegion: e.target.value as Region })}
-                    >
-                      {REGIONS.map((region) => (
-                        <option key={region}>{region}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="area">Town or neighborhood</label>
-                    <input
-                      id="area"
-                      placeholder="Hicksville"
-                      className="input"
-                      value={draft.homeArea}
-                      onChange={(e) => patch({ homeArea: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="label" htmlFor="arrival">Usual arrival time on campus</label>
-                  <input
-                    id="arrival"
-                    type="time"
-                    className="input"
-                    value={draft.arrivalTime}
-                    onChange={(e) => patch({ arrivalTime: e.target.value })}
-                  />
-                </div>
-              </>
-            ) : null}
+            {step === 1 ? <RoleStep draft={draft} onChange={patch} /> : null}
+            {step === 2 ? <TripDetailsStep draft={draft} onChange={patch} /> : null}
 
-            {step === 2 ? (
+            {step === 3 ? (
               <>
                 <header>
-                  <p className="eyebrow">Step 3 of 3</p>
+                  <p className="eyebrow">Step 4 of 4</p>
                   <h2 className="mt-1 text-3xl font-bold">Classes and privacy</h2>
                   <p className="mt-2 text-sm text-ink-600">
                     Add course codes to find classmates on your route. You can skip this.
@@ -389,9 +316,19 @@ export function AuthScreen() {
             ) : null}
 
             {error ? (
-              <p role="alert" className="rounded-xl border border-maroon-200 bg-maroon-50 px-3.5 py-2.5 text-sm font-medium text-maroon-800">
-                {error}
-              </p>
+              <div role="alert" className="rounded-xl border border-maroon-200 bg-maroon-50 px-3.5 py-2.5 text-sm font-medium text-maroon-800">
+                <p>{error.message}</p>
+                {error.code === "email-exists" ? (
+                  <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                    <button type="button" onClick={() => switchMode("signin")} className="cursor-pointer font-bold underline underline-offset-2">
+                      Sign in
+                    </button>
+                    <Link href={resetHref(draft.email)} className="font-bold underline underline-offset-2">
+                      Reset password
+                    </Link>
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
             <div className="flex gap-2 pt-1">
@@ -405,7 +342,7 @@ export function AuthScreen() {
                   ? "Please wait..."
                   : step === 0
                     ? mode === "signup" ? "Create account" : "Sign in"
-                    : step === STEPS.length - 1 ? "Finish setup" : "Continue"}{" "}
+                    : step === LAST_STEP ? "Finish setup" : "Continue"}{" "}
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
@@ -415,7 +352,11 @@ export function AuthScreen() {
             <>
               <p className="mt-4 text-center text-sm text-ink-600">
                 {mode === "signup" ? "Already have an account?" : "New to Ram Hub?"}{" "}
-                <button type="button" onClick={switchMode} className="cursor-pointer font-semibold text-maroon-700 underline-offset-2 hover:underline">
+                <button
+                  type="button"
+                  onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
+                  className="cursor-pointer font-semibold text-maroon-700 underline-offset-2 hover:underline"
+                >
                   {mode === "signup" ? "Sign in" : "Create account"}
                 </button>
               </p>
@@ -427,7 +368,10 @@ export function AuthScreen() {
 
           <p className="mt-8 border-t border-line pt-4 text-xs leading-relaxed text-ink-500">
             Ram Hub is a student project and is not affiliated with Fordham University operations. Live van positions
-            are simulated demo data. Accounts and profiles are stored in Firebase; the demo profile stays in this browser.
+            are simulated demo data.{" "}
+            {BACKEND_KIND === "local"
+              ? "Dev mode: accounts are a local mock stored only in this browser, with hashed passwords."
+              : "Accounts and profiles are stored in Firebase; the demo profile stays in this browser."}
           </p>
         </div>
       </section>

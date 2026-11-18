@@ -13,5 +13,16 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // One membership per (group, account): the document id is "<groupId>__<uid>", so joining twice
+    // overwrites the same record. Any signed-in student can read memberships for member counts;
+    // only the member can create or delete their own.
+    match /groupMembers/{memberId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && memberId == request.resource.data.groupId + "__" + request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
   }
 }

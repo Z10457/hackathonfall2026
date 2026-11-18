@@ -1,4 +1,4 @@
-import type { Campus, Day, Direction, Region, TransitMode } from "./types";
+import type { Campus, Day, Direction, Region, Student, StudentRole, TransitMode } from "./types";
 
 export const BRAND = {
   maroon: "#900028",
@@ -107,4 +107,42 @@ export function initialsOf(name: string): string {
     .slice(0, 2)
     .map((part) => `${part[0].toUpperCase()}.`)
     .join("");
+}
+
+export const ROLE_LABEL: Record<StudentRole, string> = {
+  commuter: "Commuter",
+  resident: "Resident",
+  both: "Commuter and resident",
+};
+
+/** Profiles saved before roles existed are commuters. */
+export function roleOf(student: Pick<Student, "role">): StudentRole {
+  return student.role ?? "commuter";
+}
+
+/** Residents ("resident" or "both") travel between campuses, so the Ram Van comes first for them. */
+export function livesOnCampus(student: Pick<Student, "role">): boolean {
+  const role = roleOf(student);
+  return role === "resident" || role === "both";
+}
+
+export function otherCampus(campus: Campus): Campus {
+  return campus === "rose-hill" ? "lincoln-center" : "rose-hill";
+}
+
+/** Borough and display name used as homeRegion / homeArea for on-campus residents. */
+export const RESIDENCE_HOME: Record<Campus, { region: Region; area: string }> = {
+  "rose-hill": { region: "Bronx", area: "Rose Hill campus" },
+  "lincoln-center": { region: "Manhattan", area: "Lincoln Center campus" },
+};
+
+/** Emails are compared lowercased and trimmed everywhere. */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export const FORDHAM_EMAIL_DOMAIN = "fordham.edu";
+
+export function isFordhamEmail(email: string): boolean {
+  return /^[a-z0-9._%+-]+@fordham\.edu$/.test(normalizeEmail(email));
 }

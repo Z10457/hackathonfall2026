@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { useAuthSessionGuard, useStudent } from "@/lib/auth";
-import { isLocalOnlyStudent } from "@/lib/firebaseAuth";
+import { isDemoStudent } from "@/lib/accounts";
 import { BRAND_ASSETS, CAMPUS_LABEL } from "@/lib/constants";
 import { toggleDemoPanel } from "@/lib/demo";
 import { AlertBanner } from "./AlertBanner";
@@ -147,6 +147,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { student, ready } = useStudent();
   useAuthSessionGuard();
 
+  // Account recovery must work while signed out, so it skips the sign-in gate.
+  if (pathname.startsWith("/reset-password")) {
+    return (
+      <>
+        {children}
+        <Toaster />
+      </>
+    );
+  }
+
   if (!ready) {
     return (
       <div className="min-h-dvh">
@@ -165,7 +175,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const demo = isLocalOnlyStudent(student);
+  const demo = isDemoStudent(student);
 
   return (
     <div className="flex min-h-dvh flex-col">

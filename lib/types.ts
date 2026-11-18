@@ -9,6 +9,9 @@ export type Campus = "rose-hill" | "lincoln-center";
 /** Direction a van is heading. Maroon outline = to Rose Hill, blue outline = to Lincoln Center. */
 export type Direction = "to-rose-hill" | "to-lincoln-center";
 
+/** How a student gets around. Residents live on campus and mostly ride the Ram Van between campuses. */
+export type StudentRole = "commuter" | "resident" | "both";
+
 export type Day = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
 export type Region =
@@ -105,10 +108,19 @@ export interface Reservation {
 export interface Student {
   id: string;
   name: string;
+  /** Lowercased, trimmed. */
   email?: string;
+  /** Campus where the student takes most classes. */
   campus: Campus;
+  /** Missing on profiles created before roles existed: treat as "commuter" (see roleOf in lib/constants.ts). */
+  role?: StudentRole;
+  /** Campus the student lives on. Set for "resident" and "both". */
+  residenceCampus?: Campus;
   homeRegion: Region;
-  /** Town or neighborhood, e.g. "Hicksville" or "Astoria". */
+  /**
+   * Town or neighborhood, e.g. "Hicksville" or "Astoria". For residents this is the residence
+   * campus name ("Rose Hill campus") and homeRegion is that campus's borough.
+   */
   homeArea: string;
   /** Usual arrival time on campus, 24h "HH:MM". */
   arrivalTime: string;
@@ -142,6 +154,11 @@ export interface Group {
   days: Day[];
   memberCount: number;
   description: string;
+  /**
+   * "intercampus" groups ride the Ram Van between Rose Hill and Lincoln Center (residents and
+   * anyone switching campuses). Missing means "commute" (home to campus).
+   */
+  kind?: "commute" | "intercampus";
   /** True for groups created by the signed-in student (stored in localStorage). */
   isCustom?: boolean;
   createdBy?: string;

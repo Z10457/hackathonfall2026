@@ -7,7 +7,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useStudent } from "@/lib/auth";
 import { CAMPUS_LABEL } from "@/lib/constants";
-import { planCommute, type PlanRequest } from "@/lib/planner";
+import { livesOnCampus } from "@/lib/constants";
+import { plannerDefaultsFor, planCommute, type PlanRequest } from "@/lib/planner";
 import { STORAGE_KEYS, useStoredState } from "@/lib/storage";
 import type { Campus, TransitOption } from "@/lib/types";
 import { SORT_LABEL, type SortKey } from "./format";
@@ -27,6 +28,12 @@ interface PlannerPrefs {
 const NO_PREFS: PlannerPrefs = {};
 const SORT_KEYS: SortKey[] = ["fastest", "cheapest", "transfers"];
 
+/** For residents the Ram Van always comes first, whatever the sort. */
+function pinRamVan(options: TransitOption[], pin: boolean): TransitOption[] {
+  if (!pin) return options;
+  return [...options.filter((o) => o.mode === "ram-van"), ...options.filter((o) => o.mode !== "ram-van")];
+}
+
 function sortOptions(options: TransitOption[], sort: SortKey): TransitOption[] {
   const compare: Record<SortKey, (a: TransitOption, b: TransitOption) => number> = {
     fastest: (a, b) => a.durationMinutes - b.durationMinutes || a.cost - b.cost,
@@ -40,11 +47,15 @@ function PlannerBody({ google }: { google: typeof globalThis.google | undefined 
   const { student } = useStudent();
   const [prefs, setPrefs] = useStoredState<PlannerPrefs>(STORAGE_KEYS.plannerPrefs, NO_PREFS);
 
-  const [values, setValues] = useState<PlannerFormValues>(() => ({
-    origin: prefs.origin ?? student?.homeArea ?? "",
-    campus: prefs.campus ?? student?.campus ?? "rose-hill",
-    arriveBy: prefs.arriveBy ?? student?.arrivalTime ?? "09:00",
-  }));
+  const resident = student !== null && livesOnCampus(student);
+  const [values, setValues] = useState<PlannerFormValues>(() => {
+    const defaults = plannerDefaultsFor(student);
+    return {
+      origin: prefs.origin ?? defaults.origin,
+      campus: prefs.campus ?? defaults.campus,
+      arriveBy: prefs.arriveBy ?? student?.arrivalTime ?? "09:00",
+    };
+  });
   const [sort, setSort] = useState<SortKey>(prefs.sort ?? "fastest");
   const [errors, setErrors] = useState<Partial<Record<keyof PlannerFormValues, string>>>({});
   const [results, setResults] = useState<TransitOption[] | null>(null);
@@ -98,7 +109,7 @@ function PlannerBody({ google }: { google: typeof globalThis.google | undefined 
     setPrefs((prev) => ({ ...prev, sort: key }));
   };
 
-  const sorted = useMemo(() => (results ? sortOptions(results, sort) : []), [results, sort]);
+  const sorted = useMemo(() => (results ? pinRamVan(sortOptions(results, sort), resident) : []), [results, sort, resident]);
   const live = results?.some((o) => o.source === "google") ?? false;
 
   return (
@@ -112,7 +123,7 @@ function PlannerBody({ google }: { google: typeof globalThis.google | undefined 
         <div className="min-w-0 lg:sticky lg:top-24">
           <PlannerForm
             values={values}
-            homeArea={student?.homeArea}
+            homeArea={student ? plannerDefaultsFor(student).origin || student.homeArea : undefined}
             loading={loading}
             errors={errors}
             onChange={setValues}
@@ -171,6 +182,7 @@ function PlannerBody({ google }: { google: typeof globalThis.google | undefined 
                     option={option}
                     origin={searched.origin}
                     campus={searched.campus}
+                    betweenCampuses={resident && option.mode === "ram-van"}
                     expanded={expandedId === option.id}
                     onToggle={(id) => setExpandedId((cur) => (cur === id ? null : id))}
                   />
