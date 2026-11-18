@@ -237,11 +237,7 @@ export function AuthScreen() {
       {/* Form panel */}
       <section className="flex flex-col justify-center px-6 py-8 sm:px-10 lg:px-16">
         <div className="mx-auto w-full max-w-md">
-          <div className="flex items-center justify-between">
-            <StepDots step={step} />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={BRAND_ASSETS.ramMascot} alt="Fordham Ram" width={56} height={56} className="h-14 w-14" />
-          </div>
+          <StepDots step={step} />
           <form key={step} onSubmit={onSubmit} noValidate className="mt-5 animate-rise space-y-5">
             {step === 0 ? (
               <>
