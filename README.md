@@ -25,6 +25,14 @@ Open http://localhost:3000.
 
 Never commit `.env.local`. It is already listed in `.gitignore`.
 
+## Firebase setup
+
+Accounts and student profiles use the Firebase project in `lib/firebase.ts`. In the [Firebase console](https://console.firebase.google.com/):
+
+1. **Authentication > Sign-in method**: enable **Email/Password** and **Google**.
+2. **Authentication > Settings > Authorized domains**: add every address the app runs on (`localhost` is there by default; add your Vercel domain and any Codespace domain).
+3. **Firestore Database > Rules**: paste the contents of `firestore.rules` and publish (or run `firebase deploy --only firestore:rules`). Each user can only read and write their own `students/{uid}` profile.
+
 ## Features
 
 - **Live**: a map of Ram Vans 1 to 4 (plus 5 and 6 at peak) moving between Rose Hill and Lincoln Center. Each van is a white illustrated van with the Fordham logo that carries its painted number and an outline in its direction color (maroon to Rose Hill, blue to Lincoln Center). Tap a van for ETA, next stop, status, a 14-seat floor plan of the van, assigned-seat reservation, a QR boarding pass, cancel, and a waitlist when the van is full. Toasts fire when your van is 5 minutes away and when a waitlist seat opens.
@@ -60,7 +68,7 @@ All brand assets were downloaded from fordham.edu and verified. See [public/bran
 
 ## 60-second demo script
 
-1. **0:00, sign in.** Open the app. Point at the official Fordham logo and the Ram Van photo. Click "Skip with a demo profile" (or type any `@fordham.edu` email to show the check, then go through the three onboarding steps).
+1. **0:00, sign in.** Open the app. Point at the official Fordham logo and the Ram Van photo. Click "Skip with a demo profile" (or create an account with any email, or Continue with Google, then go through the onboarding steps).
 2. **0:08, live map.** "Fordham tracks vans internally but students cannot see them. Ram Hub shows every van." Point at the legend: maroon outline is heading to Rose Hill, blue is heading to Lincoln Center, and the number on each icon is the number painted on the van.
 3. **0:15, reserve.** Tap a van in "Arriving soonest". Show ETA, next stop, and the seat grid. Pick an open seat, tap Reserve, confirm, then "View ticket" to show the QR boarding pass and the one-minute forfeiture note.
 4. **0:28, demo mode.** Press `D`. Press `3` to fill a van, open that van on the map, and tap "Join waitlist". Press `1` to fast-forward: within about 15 seconds a seat opens and the toast confirms your new seat. Press `2` to inject a delay and watch the ETA and status change. Press `4` to bring out vans 5 and 6.
@@ -80,7 +88,7 @@ All brand assets were downloaded from fordham.edu and verified. See [public/bran
 ## Design choices and known limitations
 
 - **Simulated data.** Van positions, seats, delays, and alerts are generated in the browser. Nothing reflects real vans or real reservations. The header shows a "Demo data" badge at all times.
-- **Mock sign-in.** Any `@fordham.edu` address passes. There is no password, no email verification, and no server. Everything is stored in this browser's localStorage.
+- **Sign-in.** Firebase Authentication with any email and password, or any Google account. Emails are not verified. Student profiles are saved in Firestore; reservations, groups, chats, and the "Skip with a demo profile" account stay in this browser's localStorage.
 - **Map and route.** The built-in map draws real shorelines (NYC Open Data borough boundaries and US Census areas for New Jersey, in `lib/mapGeo.ts`) and the route follows real road geometry from OpenStreetMap via OSRM (`lib/routes.ts`): Fordham Rd, University Heights Bridge, Dyckman St, then the Henry Hudson Parkway. It is one plausible driving route, not a route confirmed by the Ram Van office. Streets other than the route are not drawn.
 - **Van icons are illustrations.** Markers use a drawn white van carrying the Fordham logo (`public/brand/ram-van-illustrated.svg`) rather than a photo. The seat plan follows a Ford Transit 15-passenger layout (front passenger, three rows of two plus one across the aisle, four-seat rear bench), which was not checked against an actual Ram Van.
 - **Google Maps is optional and untested with a live key.** With no key the app uses the built-in SVG map, which is what was verified. With a key the code loads Google Maps and falls back to the SVG map on any load or auth error.
