@@ -152,7 +152,12 @@ export const firebaseBackend: AccountBackend = {
     guard(async () => {
       const clean: Student = { ...student, email: student.email ? normalizeEmail(student.email) : student.email };
       await setDoc(doc(db, "students", clean.id), clean, { merge: true });
-      await setDoc(doc(db, "classmates", clean.id), classmateCardOf(clean));
+      try {
+        await setDoc(doc(db, "classmates", clean.id), classmateCardOf(clean));
+      } catch {
+        // The public card needs the "classmates" rule in firestore.rules to be published. Until it
+        // is, the profile still saves and the student can use the app; they are just not listed.
+      }
     }),
 
   subscribeClassmates: (listener, onError) =>
