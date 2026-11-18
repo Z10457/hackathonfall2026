@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { useStudent } from "@/lib/auth";
 import { BRAND_ASSETS, CAMPUS_LABEL } from "@/lib/constants";
+import { toggleDemoPanel } from "@/lib/demo";
 import { AlertBanner } from "./AlertBanner";
 import { DemoMode } from "./DemoMode";
 import { Footer } from "./Footer";
@@ -34,16 +35,18 @@ function TopBar({ subtitle }: { subtitle?: string }) {
           {subtitle ? (
             <span className="hidden text-sm text-white/80 md:inline">{subtitle}</span>
           ) : null}
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/70 bg-maroon-900/40 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-gold-100"
-            title="Van positions and seats are simulated. Fordham has no public live feed."
+          <button
+            type="button"
+            onClick={toggleDemoPanel}
+            className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-gold-400/70 bg-maroon-900/40 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-gold-100 transition hover:bg-maroon-900/70"
+            title="Van positions and seats are simulated. Fordham has no public live feed. Click or press D for demo controls."
           >
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping-slow rounded-full bg-gold-400" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-gold-400" />
             </span>
             Demo data
-          </span>
+          </button>
         </div>
       </div>
     </header>
@@ -54,7 +57,7 @@ function Sidebar({ pathname }: { pathname: string }) {
   return (
     <nav
       aria-label="Primary"
-      className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-60 shrink-0 flex-col border-r border-line bg-white/70 px-3 py-6 backdrop-blur lg:flex"
+      className="sticky top-16 hidden h-[calc(100dvh-7rem)] self-start w-60 shrink-0 flex-col border-r border-line bg-white/70 px-3 py-6 backdrop-blur lg:flex"
     >
       <ul className="space-y-1">
         {NAV_ITEMS.map((item) => {

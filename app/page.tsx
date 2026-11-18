@@ -1,5 +1,5 @@
-import { PageHeader } from "@/components/ui/PageHeader";
+import { LiveView } from "@/components/live/LiveView";
 
 export default function LivePage() {
-  return <PageHeader eyebrow="Live" title="Ram Vans right now" description="Coming together." />;
+  return <LiveView />;
 }

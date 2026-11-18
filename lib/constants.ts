@@ -13,9 +13,10 @@ export const BRAND_ASSETS = {
   logoWhite: "/brand/fordham-logo-white.svg",
   ramMascot: "/brand/ram-mascot.png",
   ramVan: "/brand/ram-van.png",
-  /** 128 x 128 transparent square. Van faces LEFT in the source image. */
-  ramVanIcon: "/brand/ram-van-icon.png",
-  ramVanIcon2x: "/brand/ram-van-icon@2x.png",
+  /** Illustrated white van with the Fordham logo, 160 x 80 (2:1), faces LEFT. Used for map markers and lists. */
+  ramVanIcon: "/brand/ram-van-illustrated.svg",
+  /** Photo cutout of a real Ram Van (transparent PNG). Not used for markers. */
+  ramVanCutout: "/brand/ram-van-icon.png",
   ramVanPhoto: "/brand/ram-van-photo.jpg",
   ramStatue: "/brand/ram-statue.jpg",
 } as const;
