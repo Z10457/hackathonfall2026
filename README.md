@@ -81,7 +81,7 @@ components/     UI by feature: auth, live, plan, groups, classmates, profile, sh
 lib/            Shared logic and data
   types.ts          Shared domain types
   firebase.ts       Firebase app, Auth, and Firestore
-  firebaseAuth.ts   Sign-in, sign-up, profile load and save
+  accounts/         Sign-in, sign-up, password reset, profiles (Firebase and demo backends)
   auth.ts           Current student session and profile sync
   vanSimulation.ts  Simulated live van feed
   planner.ts        Commute options
