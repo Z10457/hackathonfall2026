@@ -6,7 +6,8 @@ import type { ReactNode } from "react";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { useAuthSessionGuard, useStudent } from "@/lib/auth";
 import { isDemoStudent } from "@/lib/accounts";
-import { BRAND_ASSETS, CAMPUS_LABEL } from "@/lib/constants";
+import { BRAND_ASSETS, CAMPUS_LABEL, RAM_VAN_BOOKING_URL } from "@/lib/constants";
+import { ExternalLink } from "lucide-react";
 import { toggleDemoPanel } from "@/lib/demo";
 import { AlertBanner } from "./AlertBanner";
 import { DemoMode } from "./DemoMode";
@@ -14,7 +15,7 @@ import { Footer } from "./Footer";
 import { NAV_ITEMS, isActive } from "./nav";
 import { Toaster } from "./Toaster";
 
-function TopBar({ subtitle, demo = true }: { subtitle?: string; demo?: boolean }) {
+function TopBar({ subtitle, demo = true, booking = false }: { subtitle?: string; demo?: boolean; booking?: boolean }) {
   return (
     <header className="sticky top-0 z-40 bg-maroon-700 text-white shadow-[0_1px_0_rgb(201_162_39/0.9),0_6px_20px_-10px_rgb(72_0_20/0.6)]">
       <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-4 sm:h-16 sm:px-6">
@@ -35,6 +36,16 @@ function TopBar({ subtitle, demo = true }: { subtitle?: string; demo?: boolean }
         <div className="ml-auto flex items-center gap-2">
           {subtitle ? (
             <span className="hidden text-sm text-white/80 md:inline">{subtitle}</span>
+          ) : null}
+          {booking ? (
+            <a
+              href={RAM_VAN_BOOKING_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-bold whitespace-nowrap text-maroon-900 transition hover:bg-gold-400"
+            >
+              Book Ram Van <ExternalLink className="hidden h-3.5 w-3.5 sm:inline" aria-hidden />
+            </a>
           ) : null}
           {demo ? (
           <button
@@ -185,7 +196,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <TopBar subtitle={`${student.name.split(" ")[0]} · ${CAMPUS_LABEL[student.campus]}`} demo={demo} />
+      <TopBar subtitle={`${student.name.split(" ")[0]} · ${CAMPUS_LABEL[student.campus]}`} demo={demo} booking />
       {demo ? <AlertBanner /> : null}
       <div className="mx-auto flex w-full max-w-[1400px] flex-1">
         <Sidebar pathname={pathname} demo={demo} />

@@ -65,6 +65,9 @@ export const MODE_LABEL: Record<TransitMode, string> = {
   bike: "Bike",
 };
 
+/** Fordham's official Ram Van page, where students book real seats. */
+export const RAM_VAN_BOOKING_URL = "https://www.fordham.edu/ramvan";
+
 export const RAM_VAN_FARE = 3.5;
 export const SUBWAY_FARE = 2.9;
 

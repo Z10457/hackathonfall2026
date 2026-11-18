@@ -4,13 +4,11 @@ import { Clock, ExternalLink, MapPin, Route, Ticket } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { CAMPUS_LABEL, RAM_VAN_FARE, isPeakHour } from "@/lib/constants";
+import { CAMPUS_LABEL, RAM_VAN_BOOKING_URL, RAM_VAN_FARE, isPeakHour } from "@/lib/constants";
 import { CAMPUSES } from "@/lib/routes";
 import type { Campus, Student } from "@/lib/types";
 import { VanMap } from "./VanMap";
 
-/** Official Ram Van page, where students reserve real seats. */
-const RAM_VAN_URL = "https://www.fordham.edu/ramvan";
 
 // Published weekday service: about every 30 minutes, 6:15 AM to midnight.
 const FIRST_DEPARTURE_MIN = 6 * 60 + 15;
@@ -153,8 +151,8 @@ export function ScheduleView({ student }: { student: Student }) {
               Seats are reserved through Fordham, up to 48 hours ahead. An unclaimed seat is released one minute after
               departure, and you scan your QR code when you board.
             </p>
-            <a href={RAM_VAN_URL} target="_blank" rel="noreferrer" className="btn-primary w-full">
-              Reserve on Fordham&apos;s Ram Van site <ExternalLink className="h-4 w-4" aria-hidden />
+            <a href={RAM_VAN_BOOKING_URL} target="_blank" rel="noreferrer" className="btn-primary w-full">
+              Book Ram Van <ExternalLink className="h-4 w-4" aria-hidden />
             </a>
             <Link href="/plan" className="btn-secondary w-full">
               <Route className="h-4 w-4" aria-hidden /> Compare other ways to campus
