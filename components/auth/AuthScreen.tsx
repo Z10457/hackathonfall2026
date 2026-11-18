@@ -1,18 +1,27 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { CourseInput } from "@/components/ui/CourseInput";
-import { isFordhamEmail, useStudent } from "@/lib/auth";
+import { isValidEmail, useStudent } from "@/lib/auth";
 import { BRAND_ASSETS, CAMPUS_LABEL, REGIONS } from "@/lib/constants";
+import { auth } from "@/lib/firebase";
+import {
+  authErrorMessage,
+  createAccountWithEmail,
+  loadProfile,
+  saveProfile,
+  signInWithEmail,
+  signInWithGoogle,
+} from "@/lib/firebaseAuth";
+import { makeId } from "@/lib/storage";
 import { toast } from "@/lib/toast";
 import type { Campus, Region, Student } from "@/lib/types";
-import { signInWithGoogle } from "@/lib/firebaseAuth";
-import { auth, db } from "@/lib/firebase";
-import { doc, getDocFromServer, setDoc } from "firebase/firestore";
+import type { User } from "firebase/auth";
 
 interface Draft {
   email: string;
+  password: string;
   name: string;
   campus: Campus;
   homeRegion: Region;
@@ -24,6 +33,7 @@ interface Draft {
 
 const EMPTY_DRAFT: Draft = {
   email: "",
+  password: "",
   name: "",
   campus: "rose-hill",
   homeRegion: "Bronx",
@@ -33,6 +43,23 @@ const EMPTY_DRAFT: Draft = {
   shareProfile: false,
 };
 
+/** Local-only profile so judges can try the app without an account. Never sent to Firebase. */
+const DEMO_STUDENT: Omit<Student, "id"> = {
+  name: "Jordan Rivera",
+  email: "jrivera42@fordham.edu",
+  campus: "rose-hill",
+  homeRegion: "Long Island",
+  homeArea: "Hicksville",
+  arrivalTime: "09:30",
+  courses: ["CISC 2000", "ECON 1100", "THEO 1000", "PHIL 1000"],
+  shareProfile: true,
+  commuteMode: "lirr",
+  commuteDays: ["Mon", "Tue", "Wed", "Thu"],
+  year: "Sophomore",
+  major: "Computer Science",
+};
+
+type AuthMode = "signup" | "signin";
 
 const STEPS = ["Sign in", "Your commute", "Classes and privacy"] as const;
 
@@ -54,70 +81,67 @@ function StepDots({ step }: { step: number }) {
 export function AuthScreen() {
   const { saveStudent } = useStudent();
   const [step, setStep] = useState(0);
+  const [mode, setMode] = useState<AuthMode>("signup");
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
-
-  const [signingIn, setSigningIn] = useState(false);
-
-const handleGoogleLogin = async () => {
-  setError(null);
-  setSigningIn(true);
-
-  try {
-    const user = await signInWithGoogle();
-
-    const profile = await getDocFromServer(
-      doc(db, "students", user.uid)
-    );
-
-    if (profile.exists()) {
-      const student = profile.data() as Student;
-
-      if (
-        student.id !== user.uid ||
-        student.email !== user.email
-      ) {
-        throw new Error("Your saved profile does not match your account.");
-      }
-
-      saveStudent(student);
-
-      toast({
-        title: "Welcome back",
-        message: "Your saved profile is loaded.",
-        tone: "success",
-      });
-
-      return;
-    }
-
-    setDraft((previous) => ({
-      ...previous,
-      email: user.email ?? "",
-      name: user.displayName ?? "",
-    }));
-
-    setStep(1);
-  } catch (error) {
-    setError(
-      error instanceof Error
-        ? error.message
-        : "Could not sign in and load your profile. Please try again."
-    );
-  } finally {
-    setSigningIn(false);
-  }
-};
+  const [busy, setBusy] = useState(false);
 
   const patch = (changes: Partial<Draft>) => {
     setDraft((prev) => ({ ...prev, ...changes }));
     setError(null);
   };
 
+  /** After any sign-in: load a saved profile, or continue to onboarding. */
+  const afterSignIn = async (user: User) => {
+    const saved = await loadProfile(user.uid);
+    if (saved) {
+      saveStudent(saved);
+      toast({ title: `Welcome back, ${saved.name.split(" ")[0]}`, message: "Your saved profile is loaded.", tone: "success" });
+      return;
+    }
+    setDraft((prev) => ({
+      ...prev,
+      email: user.email ?? prev.email,
+      name: prev.name.trim() || user.displayName || "",
+      password: "",
+    }));
+    setStep(1);
+  };
+
+  const run = async (action: () => Promise<void>) => {
+    setError(null);
+    setBusy(true);
+    try {
+      await action();
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleGoogleLogin = () => run(async () => afterSignIn(await signInWithGoogle()));
+
+  const handleEmailAuth = () =>
+    run(async () => {
+      const user =
+        mode === "signup"
+          ? await createAccountWithEmail(draft.email, draft.password, draft.name)
+          : await signInWithEmail(draft.email, draft.password);
+      await afterSignIn(user);
+    });
+
+  const useDemoProfile = () => {
+    saveStudent({ ...DEMO_STUDENT, id: makeId("demo") });
+    toast({ title: "Signed in with the demo profile", message: "Jordan Rivera, Rose Hill commuter. Saved only in this browser.", tone: "success" });
+  };
+
   const validate = (): string | null => {
     if (step === 0) {
-      if (!isFordhamEmail(draft.email)) return "Use your @fordham.edu email address to sign in.";
-      if (draft.name.trim().length < 2) return "Enter your name so drivers and classmates know who you are.";
+      if (!isValidEmail(draft.email)) return "Enter a valid email address.";
+      if (draft.password.length < 6) return "Use a password with at least 6 characters.";
+      if (mode === "signup" && draft.name.trim().length < 2)
+        return "Enter your name so drivers and classmates know who you are.";
     }
     if (step === 1) {
       if (draft.homeArea.trim().length < 2) return "Add your town or neighborhood, for example Hicksville or Astoria.";
@@ -126,67 +150,46 @@ const handleGoogleLogin = async () => {
     return null;
   };
 
-  const finish = async () => {
-  setError(null);
-
-  const user = auth.currentUser;
-
-  if (
-    !user?.email ||
-    !user.emailVerified ||
-    !isFordhamEmail(user.email)
-  ) {
-    setError("Please sign in with your Fordham Google account.");
-    return;
-  }
-
-  const student: Student = {
-    id: user.uid,
-    name: draft.name.trim() || user.displayName || "Fordham student",
-    email: user.email,
-    campus: draft.campus,
-    homeRegion: draft.homeRegion,
-    homeArea: draft.homeArea.trim(),
-    arrivalTime: draft.arrivalTime,
-    courses: draft.courses,
-    shareProfile: draft.shareProfile,
-  };
-
-  try {
-    await setDoc(
-      doc(db, "students", user.uid),
-      student,
-      { merge: true }
-    );
-
-    saveStudent(student);
-
-    toast({
-      title: "Profile saved",
-      message: "Your commute profile is saved in Firebase.",
-      tone: "success",
+  const finish = () =>
+    run(async () => {
+      const user = auth.currentUser;
+      if (!user) {
+        setStep(0);
+        throw new Error("Your sign-in expired. Please sign in again.");
+      }
+      const student: Student = {
+        id: user.uid,
+        name: draft.name.trim() || user.displayName || "Ram Hub rider",
+        email: user.email ?? draft.email.trim(),
+        campus: draft.campus,
+        homeRegion: draft.homeRegion,
+        homeArea: draft.homeArea.trim(),
+        arrivalTime: draft.arrivalTime,
+        courses: draft.courses,
+        shareProfile: draft.shareProfile,
+      };
+      await saveProfile(student);
+      saveStudent(student);
+      toast({ title: `Welcome to Ram Hub, ${student.name.split(" ")[0]}`, message: "Your commute is set up.", tone: "success" });
     });
-  } catch (error) {
-    setError(
-      error instanceof Error
-        ? error.message
-        : "Could not save your profile. Please try again."
-    );
-  }
-};
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
     const problem = validate();
     if (problem) {
       setError(problem);
       return;
     }
-    if (step < STEPS.length - 1) setStep(step + 1);
+    if (step === 0) handleEmailAuth();
+    else if (step < STEPS.length - 1) setStep(step + 1);
     else finish();
   };
 
-
+  const switchMode = () => {
+    setMode(mode === "signup" ? "signin" : "signup");
+    setError(null);
+  };
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
@@ -235,47 +238,58 @@ const handleGoogleLogin = async () => {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={BRAND_ASSETS.ramMascot} alt="Fordham Ram" width={56} height={56} className="h-14 w-14" />
           </div>
-          {step === 0 && (
-  <button
-    type="button"
-    onClick={handleGoogleLogin}
-    disabled={signingIn}
-    className="btn-primary mt-5 w-full"
-  >
-    {signingIn ? "Signing in..." : "Continue with Google"}
-  </button>
-)}
-
           <form key={step} onSubmit={onSubmit} noValidate className="mt-5 animate-rise space-y-5">
             {step === 0 ? (
               <>
                 <header>
                   <p className="eyebrow">Step 1 of 3</p>
-                  <h2 className="mt-1 text-3xl font-bold">Sign in with Fordham</h2>
-                  <p className="mt-2 text-sm text-ink-600">Ram Hub is only for Fordham students.</p>
+                  <h2 className="mt-1 text-3xl font-bold">{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
+                  <p className="mt-2 text-sm text-ink-600">
+                    {mode === "signup" ? "Use any email address." : "Sign in to load your saved commute."}
+                  </p>
                 </header>
+                <button type="button" onClick={handleGoogleLogin} disabled={busy} className="btn-secondary w-full">
+                  Continue with Google
+                </button>
+                <div className="flex items-center gap-3 text-xs font-semibold tracking-wide text-ink-500 uppercase">
+                  <span className="h-px flex-1 bg-line" /> or use email <span className="h-px flex-1 bg-line" />
+                </div>
+                {mode === "signup" ? (
+                  <div>
+                    <label className="label" htmlFor="name">Full name</label>
+                    <input
+                      id="name"
+                      autoComplete="name"
+                      placeholder="Jordan Rivera"
+                      className="input"
+                      value={draft.name}
+                      onChange={(e) => patch({ name: e.target.value })}
+                    />
+                  </div>
+                ) : null}
                 <div>
-                  <label className="label" htmlFor="email">Fordham email</label>
+                  <label className="label" htmlFor="email">Email</label>
                   <input
                     id="email"
                     type="email"
                     inputMode="email"
                     autoComplete="email"
-                    placeholder="you@fordham.edu"
+                    placeholder="you@example.com"
                     className="input"
                     value={draft.email}
                     onChange={(e) => patch({ email: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="label" htmlFor="name">Full name</label>
+                  <label className="label" htmlFor="password">Password</label>
                   <input
-                    id="name"
-                    autoComplete="name"
-                    placeholder="Jordan Rivera"
+                    id="password"
+                    type="password"
+                    autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                    placeholder={mode === "signup" ? "At least 6 characters" : ""}
                     className="input"
-                    value={draft.name}
-                    onChange={(e) => patch({ name: e.target.value })}
+                    value={draft.password}
+                    onChange={(e) => patch({ password: e.target.value })}
                   />
                 </div>
               </>
@@ -381,21 +395,39 @@ const handleGoogleLogin = async () => {
             ) : null}
 
             <div className="flex gap-2 pt-1">
-              {step > 0 ? (
+              {step > 1 ? (
                 <button type="button" className="btn-secondary" onClick={() => { setStep(step - 1); setError(null); }}>
                   <ArrowLeft className="h-4 w-4" /> Back
                 </button>
               ) : null}
-              <button type="submit" className="btn-primary flex-1">
-                {step === STEPS.length - 1 ? "Finish setup" : "Continue"} <ArrowRight className="h-4 w-4" />
+              <button type="submit" className="btn-primary flex-1" disabled={busy}>
+                {busy
+                  ? "Please wait..."
+                  : step === 0
+                    ? mode === "signup" ? "Create account" : "Sign in"
+                    : step === STEPS.length - 1 ? "Finish setup" : "Continue"}{" "}
+                <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           </form>
 
+          {step === 0 ? (
+            <>
+              <p className="mt-4 text-center text-sm text-ink-600">
+                {mode === "signup" ? "Already have an account?" : "New to Ram Hub?"}{" "}
+                <button type="button" onClick={switchMode} className="cursor-pointer font-semibold text-maroon-700 underline-offset-2 hover:underline">
+                  {mode === "signup" ? "Sign in" : "Create account"}
+                </button>
+              </p>
+              <button type="button" onClick={useDemoProfile} className="btn-ghost mt-3 w-full">
+                <Sparkles className="h-4 w-4" /> Skip with a demo profile
+              </button>
+            </>
+          ) : null}
 
           <p className="mt-8 border-t border-line pt-4 text-xs leading-relaxed text-ink-500">
             Ram Hub is a student project and is not affiliated with Fordham University operations. Live van positions
-            are simulated demo data. Sign-in is a demo: nothing leaves this browser.
+            are simulated demo data. Accounts and profiles are stored in Firebase; the demo profile stays in this browser.
           </p>
         </div>
       </section>

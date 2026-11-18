@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CourseInput } from "@/components/ui/CourseInput";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useStudent } from "@/lib/auth";
+import { isLocalOnlyStudent } from "@/lib/firebaseAuth";
 import { CAMPUS_LABEL, DIRECTION_LABEL, REGIONS, formatTime, initialsOf } from "@/lib/constants";
 import { STORAGE_KEYS, clearAllStored, useStoredState } from "@/lib/storage";
 import { toast } from "@/lib/toast";
@@ -26,7 +27,7 @@ export function ProfileView() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Profile" title="Your commute" description="Everything here is stored only in this browser." />
+      <PageHeader eyebrow="Profile" title="Your commute" description={isLocalOnlyStudent(student) ? "Demo profile: everything here is stored only in this browser." : "Your profile is saved to your account. Reservations, groups, and chats stay in this browser."} />
 
       <section className="card flex animate-rise items-center gap-4 p-5">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-maroon-700 font-display text-lg font-bold text-white ring-2 ring-gold-500 ring-offset-2">

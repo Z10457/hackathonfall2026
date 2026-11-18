@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { AuthScreen } from "@/components/auth/AuthScreen";
-import { useStudent } from "@/lib/auth";
+import { useAuthSessionGuard, useStudent } from "@/lib/auth";
 import { BRAND_ASSETS, CAMPUS_LABEL } from "@/lib/constants";
 import { toggleDemoPanel } from "@/lib/demo";
 import { AlertBanner } from "./AlertBanner";
@@ -140,6 +140,7 @@ function ShellSkeleton() {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const { student, ready } = useStudent();
+  useAuthSessionGuard();
 
   if (!ready) {
     return (
